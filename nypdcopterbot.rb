@@ -7,8 +7,8 @@ require 'net/http'
 require 'restclient'
 require 'aws-sdk-s3'
 
-prod_mapping_interval =15  # min, should be 15
-mapping_interval = ENV["NEVERTWEET"] || ENV["NEVERTWEET"] ? 15 : prod_mapping_interval
+prod_mapping_interval = 15  # min, should be 15
+mapping_interval = ENV["NEVERTWEET"] || ENV["NEVERTOOT"] ? (ENV['MAPINTVL'] || 15) : prod_mapping_interval
 delay = 0 # min, default 5 min
 
 copters = {
@@ -46,8 +46,8 @@ mysqlclient = Mysql2::Client.new(
   :password => ENV['MYSQLPASSWORD'],
   :database => ENV['MYSQLDATABASE'] || "dump1090"
 )
+creds = YAML.load_file(File.join(File.dirname(__FILE__), "creds.yml"))
 unless ENV['NEVERTWEET']
-	creds = YAML.load_file(File.join(File.dirname(__FILE__), "creds.yml"))
 	twitterclient = Twitter::REST::Client.new do |config|
   		config.consumer_key        = creds["twitter"]["consumer_key"]
   		config.consumer_secret     = creds["twitter"]["consumer_secret"]
@@ -80,33 +80,58 @@ aircraft.each do |nnum, icao|
     # parsed_time is the current time on the rpi, so regardless of the garbage given by the airplane, that should work
     # however, it causes some NYPD helicopters to be tweeted too much
     # but without it, n725dt is never tweeted
-    results = mysqlclient.query("SELECT *, convert_tz(parsed_time, '+00:00', 'US/Eastern') datetz FROM squitters WHERE icao_addr = conv('#{icao}', 16,10) and lat is not null and convert_tz(parsed_time, '+00:00', 'US/Eastern') > DATE_SUB(convert_tz(NOW(), '+00:00', 'US/Eastern'), interval #{mapping_interval} minute) and convert_tz(parsed_time, '+00:00', 'US/Eastern') < convert_tz(NOW(), '+00:00', 'US/Eastern') order by parsed_time desc;")
+    # TODO: should I modify dump1090-stream-parser so that one of the timing columns is current time on the DB? (e.g. with MYSQL @@current_time or whatever)
+    results = mysqlclient.query(%{
+      SELECT *, convert_tz(parsed_time, '+00:00', 'US/Eastern') datetz 
+      FROM squitters 
+      WHERE icao_addr = conv('#{icao}', 16,10) and 
+        lat is not null and 
+        convert_tz(parsed_time, '+00:00', 'US/Eastern') > DATE_SUB(convert_tz(NOW(), '+00:00', 'US/Eastern'), interval #{mapping_interval} minute) and 
+        convert_tz(parsed_time, '+00:00', 'US/Eastern') < convert_tz(NOW(), '+00:00', 'US/Eastern') 
+      order by parsed_time desc;}.gsub(/\s+/, " ").strip)
     puts "#{Time.now} results: #{results.count} (#{nnum} / #{icao})"
     next unless results.count > 0
     puts results.first["datetz"].inspect
 
-    svg_fn = `/usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/mapify.js #{icao}`
+    svg_fn = `MAXTIMEDIFF=#{10} /usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/mapify.js #{icao} #{nnum}`
     svg_fn.strip!
     puts "svg: #{svg_fn.inspect}"    
 
-    begin
-      neighborhood_names = `/usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/neighborhoods.js #{icao}`.strip.split("|")
-    rescue StandardError => e
-      neighborhood_names = nil
-    end
 
-    png_fn = svg_fn[0...-3] + "png"
+    metadata_fn = svg_fn.gsub(".svg", ".metadata.json")
+    metadata = JSON.parse(open(metadata_fn, 'r'){|f| f.read })
+
+    neighborhood_names = metadata["nabes"] 
+    
+    # not currently used, just trying not to forget about 'em.
+    start_recd_time = metadata["start_recd_time"]
+    end_recd_time = metadata["end_recd_time"]
+    start_ac_time = metadata["start_ac_time"]
+    end_ac_time = metadata["end_ac_time"]
+    points_cnt = metadata["points_cnt"]
+    # begin
+    #   neighborhood_names = `/usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/neighborhoods.js #{icao}`.strip.split("|")
+    # rescue StandardError => e
+    #   neighborhood_names = nil
+    # end
+
+    png_datetime = Time.now.strftime("%Y-%m-%d_%H_%M_%S")
+    png_fn = svg_fn[0...-4] + png_datetime +  ".png"
+    new_metadata_fn = metadata_fn.gsub(".metadata.json", "-" + png_datetime + ".metadata.json")
+    File.rename(metadata_fn, new_metadata_fn)
+
     png_start_time = Time.now
     # on a t2.micro, this takes way too long and requires a ton of memory.
-    # # turn the SVG into a PNG with Batik.
     if SCREENSHOTTER == :batik
+      # turn the SVG into a PNG with Batik.
       `java -jar #{File.dirname(__FILE__)}/../dump1090-mapper/batik-1.8/batik-rasterizer-1.8.jar #{svg_fn}`
     elsif SCREENSHOTTER == :chrome
+      # turn the SVG into a PNG with headless chrome
       s3 = Aws::S3::Resource.new(region:'us-east-1')
       svg_s3_key = File.basename(svg_fn)
       svg_obj = s3.bucket(BUCKET).object(svg_s3_key)
       svg_obj.upload_file(svg_fn, acl: "public-read", content_type: 'image/svg+xml')
-      chrome_cmd = "#{File.dirname(__FILE__)}/node_modules/puppeteer/.local-chromium/linux-609904/chrome-linux/chrome --headless --screenshot=#{png_fn} http://#{BUCKET}.s3.amazonaws.com/#{svg_fn}"
+      chrome_cmd = "#{File.dirname(__FILE__)}/node_modules/puppeteer/.local-chromium/linux-609904/chrome-linux/chrome --headless --window-size=600,600 --screenshot=#{png_fn} http://#{BUCKET}.s3.amazonaws.com/#{svg_fn}  2>/dev/null"
       puts chrome_cmd
       `#{chrome_cmd}`
     else
@@ -155,12 +180,19 @@ aircraft.each do |nnum, icao|
       puts "but not really tooting"
     end
 
-    unless ENV['NEVERSLACK']
-      s3 = Aws::S3::Resource.new(region:'us-east-1')
-      png_s3_key = File.basename(png_fn)
-      png_obj = s3.bucket(BUCKET).object(png_s3_key)
-      png_obj.upload_file(png_fn, acl: "public-read", content_type: "image/png")
+    s3 = Aws::S3::Resource.new(region:'us-east-1')
+    png_s3_base_key = File.basename(png_fn)
+    png_s3_key = "airplanes/" + png_s3_base_key #.gsub(".png", '') + png_datetime +  ".png"
+    png_obj = s3.bucket(BUCKET).object(png_s3_key)
+    png_obj.upload_file(png_fn, acl: "public-read", content_type: "image/png")
 
+    metadata_s3_base_key = File.basename(new_metadata_fn)
+    metadata_s3_key = "airplanes/" + metadata_s3_base_key 
+    metadata_obj = s3.bucket(BUCKET).object(metadata_s3_key)
+    metadata_obj.upload_file(new_metadata_fn, acl: "public-read", content_type: "application/json")
+
+
+    unless ENV['NEVERSLACK']
       slack_payload =  {
           "text" => tweet_text,
           "attachments": [
@@ -173,7 +205,6 @@ aircraft.each do |nnum, icao|
       }
       puts "posting to slack"
       resp = RestClient.post(creds['slack']['webhook'], JSON.dump(slack_payload), headers: {"Content-Type": "application/json"})
-      puts "slack's resp: #{resp}"
     end
 
   rescue StandardError => e
