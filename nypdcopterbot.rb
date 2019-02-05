@@ -161,6 +161,7 @@ aircraft.each do |nnum, icao|
         end
       end
     end
+    debug_text = "#{points_cnt} points; #{start_recd_time} to #{end_recd_time}"
     
     puts "trying to tweet \"#{tweet_text}\" in #{delay} min"
     if !ENV["NEVERTWEET"] || !ENV["NEVERTOOT"]
@@ -194,7 +195,7 @@ aircraft.each do |nnum, icao|
 
     unless ENV['NEVERSLACK']
       slack_payload =  {
-          "text" => tweet_text,
+          "text" => tweet_text + " " + debug_text,
           "attachments": [
             {
                 "fallback": "A map of #{nnum}'s flight over the NYC area.",
