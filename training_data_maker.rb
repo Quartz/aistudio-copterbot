@@ -133,7 +133,12 @@ aircraft.each do |nnum, icao|
             unless File.exists?(shingle_png_fn)
                 chrome_cmd = "#{File.dirname(__FILE__)}/../dump1090-mapper/node_modules/puppeteer/.local-chromium/mac-624492/chrome-mac/Chromium.app/Contents/MacOS/Chromium --headless --window-size=600,600 --screenshot=#{shingle_png_fn} http://localhost:8000/#{shingle_svg_fn}  2>/dev/null"
                 puts chrome_cmd
-                `#{chrome_cmd}`
+                begin
+                    `#{chrome_cmd}`
+                rescue e
+                    puts "might be that headless chrome isn't accessible? change the path in training_data_maker.rb to point to a Chrome install, perhaps installed via npm install puppeteer"
+                    raise e 
+                end
             end
             shingles_csv << [shingle[0]["icao_hex"],
                     shingle_start_time,

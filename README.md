@@ -31,3 +31,14 @@ Cool. It's kind of involved but it's totally doable. I believe in you.
 2. Build out a basemap in dump1090-mapper. In New York City, we use parks, airports and rivers/the bay as wayfinding guides. What to use here depends on your city; in Atlanta, I'd use the freeways. Pull requests accepted.
 3. Set up one MySQL database for all the receivers to write to.
 4. more to come...
+
+
+The machine learning part of this
+---------------------------------
+
+Once we've assembled a decent-sized corpus of helicopter flights, we need figure out how to detect when a helicopter is hovering. We're going to do that with machine learning. In order to do that, we need to give the computer hand-picked examples of helicopters hovering and helicopters doing other non-hovering things. Here's how we do that.
+
+1. Run `ruby training_data_maker.rb` with the appropriate database env vars. This generates a `hover_train_png` folder (and a `hover_train_svg` folder in which you should run a webserver with `python -m http.server` lol sorry this is complicated) with PNGs representing 5 minute long segments of helicopter paths, along with `shingles.csv` with metadata about each segment. (The segments overlap.)
+2. Create the `hand_coded_training_data` folder and COPY `hover_train_png` into `hand_coded_training_data/hover_train_png_hover_only` (not move, copy). Then, leaf through the images and delete all the ones that do not depict hovering. Use your judgment. 
+3. Somehow, we'll add the chosen classes to shingles.csv and also add our chosen features to the CSV.
+4. Then do some scikitlearn magic.
