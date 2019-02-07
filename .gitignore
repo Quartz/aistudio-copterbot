@@ -1,3 +1,5 @@
 *.png
 *.svg
 creds.yml
+hand_coded_training_data/
+hover_train_svg/

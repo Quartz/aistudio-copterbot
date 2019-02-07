@@ -11,6 +11,8 @@ prod_mapping_interval = 15  # min, should be 15
 mapping_interval = ENV["NEVERTWEET"] || ENV["NEVERTOOT"] ? (ENV['MAPINTVL'] || 15) : prod_mapping_interval
 delay = 0 # min, default 5 min
 
+MIN_POINTS = 3 # number of points to require before tweeting a map. probably actually ought to be more!
+
 copters = {
   "N917PD" => "ACB1F5",
   "N918PD" => "ACB5AC",
@@ -109,6 +111,8 @@ aircraft.each do |nnum, icao|
     start_ac_time = metadata["start_ac_time"]
     end_ac_time = metadata["end_ac_time"]
     points_cnt = metadata["points_cnt"]
+
+    next if points_cnt < MIN_POINTS
     # begin
     #   neighborhood_names = `/usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/neighborhoods.js #{icao}`.strip.split("|")
     # rescue StandardError => e
@@ -163,6 +167,17 @@ aircraft.each do |nnum, icao|
     end
     debug_text = "#{points_cnt} points; #{start_recd_time} to #{end_recd_time}"
     
+    s3 = Aws::S3::Resource.new(region:'us-east-1')
+    png_s3_base_key = File.basename(png_fn)
+    png_s3_key = "airplanes/" + png_s3_base_key #.gsub(".png", '') + png_datetime +  ".png"
+    png_obj = s3.bucket(BUCKET).object(png_s3_key)
+    png_obj.upload_file(png_fn, acl: "public-read", content_type: "image/png")
+
+    metadata_s3_base_key = File.basename(new_metadata_fn)
+    metadata_s3_key = "airplanes/" + metadata_s3_base_key 
+    metadata_obj = s3.bucket(BUCKET).object(metadata_s3_key)
+    metadata_obj.upload_file(new_metadata_fn, acl: "public-read", content_type: "application/json")
+
     puts "trying to tweet \"#{tweet_text}\" in #{delay} min"
     if !ENV["NEVERTWEET"] || !ENV["NEVERTOOT"]
       sleep delay * 60
@@ -180,22 +195,9 @@ aircraft.each do |nnum, icao|
     else
       puts "but not really tooting"
     end
-
-    s3 = Aws::S3::Resource.new(region:'us-east-1')
-    png_s3_base_key = File.basename(png_fn)
-    png_s3_key = "airplanes/" + png_s3_base_key #.gsub(".png", '') + png_datetime +  ".png"
-    png_obj = s3.bucket(BUCKET).object(png_s3_key)
-    png_obj.upload_file(png_fn, acl: "public-read", content_type: "image/png")
-
-    metadata_s3_base_key = File.basename(new_metadata_fn)
-    metadata_s3_key = "airplanes/" + metadata_s3_base_key 
-    metadata_obj = s3.bucket(BUCKET).object(metadata_s3_key)
-    metadata_obj.upload_file(new_metadata_fn, acl: "public-read", content_type: "application/json")
-
-
     unless ENV['NEVERSLACK']
       slack_payload =  {
-          "text" => tweet_text + " " + debug_text,
+          "text" => tweet_text + " \n " + debug_text,
           "attachments": [
             {
                 "fallback": "A map of #{nnum}'s flight over the NYC area.",
