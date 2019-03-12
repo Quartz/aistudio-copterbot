@@ -15,7 +15,6 @@
 # can label them as hovering or not.
 
 
-require 'twitter'
 require 'mysql2'
 require 'date'
 require 'time'
