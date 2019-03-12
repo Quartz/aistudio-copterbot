@@ -1,4 +1,5 @@
 *.png
+.DS_Store
 *.svg
 creds.yml
 hand_coded_training_data/

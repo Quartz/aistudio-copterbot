@@ -7,8 +7,9 @@ require 'net/http'
 require 'restclient'
 require 'aws-sdk-s3'
 
-prod_mapping_interval = 15  # min, should be 15
-mapping_interval = ENV["NEVERTWEET"] || ENV["NEVERTOOT"] ? (ENV['MAPINTVL'] || 15) : prod_mapping_interval
+prod_mapping_interval = 10  # min, should be 15
+dev_mapping_interval = 15
+mapping_interval = ENV["NEVERTWEET"] || ENV["NEVERTOOT"] ? (ENV['MAPINTVL'] || dev_mapping_interval) : prod_mapping_interval
 delay = 0 # min, default 5 min
 
 MIN_POINTS = 3 # number of points to require before tweeting a map. probably actually ought to be more!
@@ -22,6 +23,7 @@ copters = {
   "N422PD" => "A50456",
   "N414PD" => "A4E445",
   "N23FH"  => "A206AC",
+  "N509PD" => "A65CA8",
 }
 
 SCREENSHOTTER = :chrome # {:chrome, :batik}
