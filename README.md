@@ -39,12 +39,12 @@ The machine learning part of this
 Once we've assembled a decent-sized corpus of helicopter flights, we need figure out how to detect when a helicopter is hovering. We're going to do that with machine learning. In order to do that, we need to give the computer hand-picked examples of helicopters hovering and helicopters doing other non-hovering things. Here's how we do that.
 
 1. Run `ruby generate_images_for_hand_classification.rb` with the appropriate database env vars. This generates a `hover_train_png` folder (and a `hover_train_svg` folder in which you should run a webserver with `python -m http.server` lol sorry this is complicated) with PNGs representing 5 minute long segments of helicopter paths, along with `shingles.csv` with metadata about each segment. (The segments overlap.)
-2. Create the `hand_coded_training_data` folder and COPY `hover_train_png` into `hand_coded_training_data/hover_train_png_hover_only` (not move, copy). Then, leaf through the images and delete all the ones that do not depict hovering. Use your judgment. 
-3. Somehow, we'll add the chosen classes to shingles.csv and also add our chosen features to the CSV. `generate_training_data.rb` should loop through the `hand_coded_training_data/hover_train_png_hover_only` and add the `hover` class and 
+2. Create the `hand_coded_training_data` folder and COPY `hover_train_png` into `hand_coded_training_data/hover_train_png_hover_only` (not move, copy). Then, leaf through the images and delete all the ones that do not depict hovering. Use your judgment.
+3. With `generate_training_data_from_handclassified_shingles.rb`, generate `training_data.csv`, which should soon include data about each shingle, plus features we generated. If you use additional `..._hover_only` folders in `hand_coded_training_data` be srue to record them in the Ruby script.
 4. Then do some scikitlearn magic...
 
 
 Qz Janky Deployment:
 --------------------
-scp -r ../nypdcopterbot/*.rb ec2-user@whatever:/home/ec2-user/nypdcopterbot/
-scp -r ../dump1090-mapper/*.js ec2-user@whatever:/home/ec2-user/dump1090-mapper/
+`scp -r ../nypdcopterbot/*.rb ec2-user@whatever:/home/ec2-user/nypdcopterbot/`
+`scp -r ../dump1090-mapper/*.js ec2-user@whatever:/home/ec2-user/dump1090-mapper/`
