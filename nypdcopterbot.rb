@@ -94,7 +94,7 @@ aircraft.each do |nnum, icao|
         convert_tz(parsed_time, '+00:00', 'US/Eastern') < convert_tz(NOW(), '+00:00', 'US/Eastern') 
       order by parsed_time desc;}.gsub(/\s+/, " ").strip)
     puts "#{Time.now} results: #{results.count} (#{nnum} / #{icao})"
-    next unless results.count > 0
+    next unless results.count >= 2
     puts results.first["datetz"].inspect
 
     svg_fn = `MAXTIMEDIFF=#{10} /usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/mapify.js #{icao} #{nnum}`
