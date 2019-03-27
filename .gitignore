@@ -1,6 +1,11 @@
 *.png
 .DS_Store
 *.svg
+*.metadata.json
 creds.yml
 hand_coded_training_data/
 hover_train_svg/
+training_data.csv
+shingles.csv
+.ipynb_checkpoints/
+generating_quantiles.txt
