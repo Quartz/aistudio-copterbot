@@ -4,7 +4,7 @@ When police helicopter circles overhead, I always wonder what's up.
 
 It's a sign, a trigger. The longer it's circling, the more likely I'll check Twitter or a local news site to find out what's going on.
 
-Take that a step further, and we think that sign -- a circling helicopter -- could be a good tip for local reporters that there's a story in the works. Something worth checking out. 
+Take that a step further, and we think that sign – a circling helicopter – could be a good tip for local reporters that there's a story in the works. Something worth checking out. 
 
 So we wondered: Could we train a computer to spot circling helicopters?
 
@@ -18,7 +18,7 @@ Nearly all aircraft transmit their identity and location, which helps keep them 
 
 It's thousands of these receivers that power real-time maps like [FlightAware](https://flightaware.com) and [Flightradar24](https://flightradar24.com). Those sites are a great source for flight data, and Flightradar24 is where BuzzFeed got data for its great work [detecting hidden spy planes](https://www.buzzfeednews.com/article/peteraldhous/hidden-spy-planes).
 
-But you can collect your own data, too. With a couple of these receivers, we now track all aircraft flying around New York City -- including NYPD helicopters. Jeremy B. Merrill even set up a nifty bot that posts a message in our Slack every time one of those choppers is aloft.
+But you can collect your own data, too. With a couple of these receivers, we now track all aircraft flying around New York City – including NYPD helicopters. Jeremy B. Merrill even set up a nifty bot that posts a message in our Slack every time one of those choppers is aloft.
 
 [Image from slack]
 
@@ -26,41 +26,46 @@ But you can collect your own data, too. With a couple of these receivers, we now
 
 Now we want to detect not just _anytime_ a 'copter is in the air, but when one is flying in circles. That's the sign.
 
-So using rows and rows of our flight data, Jeremy has been training a machine learning model to spot moments when the helicopters are hovering or circling. He taught the computer which rows are "yes hovering", which ones are "not hoving" and the had it guess on data it hadn't seen before. After lots of training and tinkering, the computer was right 73% of the time. Which is okay, but not excellent.
+So using rows and rows of our flight data, Jeremy has been training a machine learning model to spot moments when the helicopters are hovering or circling. He taught the computer which rows are "yes hovering", which ones are "not hoving" and the had it guess on data it hadn't seen before. After lots of training and tinkering, the computer was right 73% of the time. Which is moderately good.
 
-Meanwhile I was taking a free online class called [Practical Machine Learning for Coders](https://course.fast.ai/) from Fast.ai, a machine-learning platform I really like that's committed to "making neural nets uncool again" -- essentially democratizing AI.
+Meanwhile I was taking a free online class called [Practical Machine Learning for Coders](https://course.fast.ai/) from Fast.ai, a machine-learning platform I really like that's committed to "making neural nets uncool again" – essentially democratizing AI.
 
-The first lessons are about images, and we quickly learned how to teach a computer to distinguish between dog and cat breeds(!) or separate teddy bears from black bears and grizzly bears. At one point instructor Jeremy Howard mentioned that computer-mouse movements have been be turned into "data pictures" so that an image algorithm could detect patterns, [such as fraud](https://www.splunk.com/blog/2017/04/18/deep-learning-with-splunk-and-tensorflow-for-security-catching-the-fraudster-in-neural-networks-with-behavioral-biometrics.html).
+The first lessons are about image recognition, and we quickly learned how to teach a computer to distinguish between dog and cat breeds(!) Then we separated teddy bears from black bears and grizzly bears. At one point instructor Jeremy Howard mentioned that computer-mouse movements have been be turned into "data pictures" so that an image algorithm could detect patterns, [such as fraud](https://www.splunk.com/blog/2017/04/18/deep-learning-with-splunk-and-tensorflow-for-security-catching-the-fraudster-in-neural-networks-with-behavioral-biometrics.html).
 
 ## Using "data images" (aka maps)
 
-I thought: Hey, those maps Jeremy Merrill's bot is posting in Slack are basically "data images." **I** can see when a helicopter is circling in them. Could I train a computer to see the same thing?
+That got me thinking: Hey, those maps Jeremy Merrill's bot is posting in Slack are basically "data images." **I** can see when a helicopter is circling in them. Could I train a computer to see the same thing?
 
-From the directory where we store the images I grabbed some of the most recent -- 183 in all. I then sorted them into two folders: `1` for circling, and `0` for not circling. I then pointed the Fast.AI software at those two folders.
+I went to the directory where we store the helicopter maps and grabbed some of the most recent – 183 in all. I then sorted them into two folders: `1` for circling, and `0` for not circling. I then pointed the Fast.AI software at those two folders.
 
 [image of 1/0 classification]
 
-Following the same steps in the lesson, in my pajamas while home sick, I quickly got a reliable accuracy of 89% -- which is pretty great. The computer guessed correctly almost 9 out of 10 times.
+Following the same steps in the lesson, in my pajamas while home sick, I quickly got a reliable accuracy of 89% – which is pretty great. The computer guessed correctly almost 9 out of 10 times! While preparing this blog post and running through the steps anew, adding some additional tweaks I learned, I got up to *94% accuracy*. 
+
+That is pretty dang amazing.
 
 Not only that, I could apparently _see_ where the computer got things wrong.
 
 [image of top losses]
 
-A little more code and I could check out new, single images. Here, you can see that the output was "Category 1" -- circling:
+With little more code, I could check out new, single images. Here, you can see that the output was "Category 1" – circling:
 
 [image of new one]
+
+This can run on an everyday server, so we could pretty easily add this detection to our Slack bot.
 
 ## Quick takeaways
 
 Here are some of the things I've discovered:
 
-- The main thing I realized is that this is _not hard_. I encourage you to [check out the fast.ai course](https://course.fast.ai/). With the images I had available to me, already generated by Jeremy's bot, I got a lot done _fast_.
+- The main thing I realized is that this is _not hard_. I encourage you to [check out the fast.ai course](https://course.fast.ai/). With the images I had available to me, previously generated by Jeremy's bot, I got a lot done _fast_.
 
-- I learned that I could get good results with _very few images_. One-hundred eighty-three images is not "big data." It's a fraction of what I have on my phone. This is mainly because I'm building on architecture of a previously trained model, called resnet34, built from the famous ImageNet data set. (Which, you should be aware, [has a US and European bias](https://ai.google/research/pubs/pub46553).) With more map images, I bet it would be even better.
+- I learned that I could get good results with _very few images_. One-hundred eighty-three images is not "big data." It's a fraction of what I have on my phone. This works mainly because I'm building on architecture of a previously trained architecture, called resnet34, built from the famous ImageNet data set. (Which, you should be aware, [has a US and European bias](https://ai.google/research/pubs/pub46553).) With more map images, I bet it would be even better.
 
-- I'm pretty sure that if we generated maps _without_ the base map -- the green, yellow, and white maps to help us humans locate the helicopter in the city -- the computer would get much better.
+- I'm pretty sure that if we generated maps _without_ the base map – the green, yellow, and white maps to help us humans locate the helicopter in the city – the computer would get even better.
 
-And it's got me thinking anew about visualizing data. Not the way I've done it for years, so a general audience gets it, but in a way that a _computer_ gets it ... and maybe a few other humans, too.
+And it's got me thinking anew about visualizing data. While on the WNYC Data News Team, we worked hard to make sure data was visualized in a way the general public would get it at a glance. Now I'm imagining all the ways one might visualize data so that a _computer_ gets it!
+
 
  
 
