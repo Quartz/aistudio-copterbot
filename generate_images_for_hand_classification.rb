@@ -43,6 +43,8 @@ SHINGLE_DURATION_SECS = SHINGLE_DURATION * 60
 FileUtils.mkdir_p("hover_train_svg")
 FileUtils.mkdir_p("hover_train_png")
 
+EXCLUDE_BACKGROUND = false
+
 begin
   additional_aircraft_str = Net::HTTP.get(URI("https://gist.githubusercontent.com/jeremybmerrill/65f3538b59032b3d66cd55165eec26b8/raw/64c78bca212c828787dc9a7eb0b26697e9fb67c4/planes.txt"))
   additional_aircraft = Hash[*additional_aircraft_str.split("\n").map{|line| line.split(",")}.flatten(1)]
@@ -123,7 +125,7 @@ aircraft.each do |nnum, icao|
             shingle_start_time = shingle[-1]["parsed_time"].to_s.gsub(/ -0\d00/, '')
             shingle_end_time = shingle[0]["parsed_time"].to_s.gsub(/ -0\d00/, '')
             shingle_svg_fn = "hover_train_svg/#{shingle[0]["icao_hex"]}_#{shingle_start_time.gsub(/[ \:]/, '_')}_#{shingle_end_time.gsub(/[ \:]/, '_')}.svg"
-            shingle_cmd = "node ../dump1090-mapper/mapify.js #{icao} #{nnum} '#{shingle_start_time}' '#{shingle_end_time}'"
+            shingle_cmd = "node ../dump1090-mapper/mapify.js #{EXCLUDE_BACKGROUND ? '--exclude-background' : ''} --n-number #{nnum} --start-time '#{shingle_start_time}' --end-time '#{shingle_end_time}' #{icao}"
             unless File.exists?(shingle_svg_fn) && File.new(shingle_svg_fn).size > 0
                 puts shingle_cmd
                 `#{shingle_cmd}` 
