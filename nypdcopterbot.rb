@@ -97,7 +97,7 @@ aircraft.each do |nnum, icao|
     next unless results.count >= 2
     puts results.first["datetz"].inspect
 
-    svg_fn = `MAXTIMEDIFF=#{10} /usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/mapify.js #{icao} #{nnum}`
+    svg_fn = `MAXTIMEDIFF=#{10} /usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/mapify.js --n-number #{nnum}  #{icao}`
     svg_fn.strip!
     puts "svg: #{svg_fn.inspect}"    
 
@@ -137,7 +137,7 @@ aircraft.each do |nnum, icao|
       svg_s3_key = File.basename(svg_fn)
       svg_obj = s3.bucket(BUCKET).object(svg_s3_key)
       svg_obj.upload_file(svg_fn, acl: "public-read", content_type: 'image/svg+xml')
-      chrome_cmd = "#{File.dirname(__FILE__)}/node_modules/puppeteer/.local-chromium/linux-609904/chrome-linux/chrome --headless --window-size=600,600 --screenshot=#{png_fn} http://#{BUCKET}.s3.amazonaws.com/#{svg_fn}  2>/dev/null"
+      chrome_cmd = "#{File.dirname(__FILE__)}/node_modules/puppeteer/.local-chromium/linux-609904/chrome-linux/chrome --headless --window-size=600,600  --disable-overlay-scrollbar --screenshot=#{png_fn} http://#{BUCKET}.s3.amazonaws.com/#{svg_fn}  2>/dev/null"
       puts chrome_cmd
       `#{chrome_cmd}`
     else
