@@ -6,6 +6,7 @@ require 'yaml'
 require 'net/http'
 require 'restclient'
 require 'aws-sdk-s3'
+require_relative "./utils"
 
 prod_mapping_interval = 10  # min, should be 15
 dev_mapping_interval = 15
@@ -14,34 +15,11 @@ delay = 0 # min, default 5 min
 
 MIN_POINTS = 3 # number of points to require before tweeting a map. probably actually ought to be more!
 
-copters = {
-  "N917PD" => "ACB1F5",
-  "N918PD" => "ACB5AC",
-  "N919PD" => "ACB963",
-  "N920PD" => "ACBF73",
-  "N319PD" => "A36989",
-  "N422PD" => "A50456",
-  "N414PD" => "A4E445",
-  "N23FH"  => "A206AC",
-  "N509PD" => "A65CA8",
-}
-
 SCREENSHOTTER = :chrome # {:chrome, :batik}
 
 # select hex(icao_addr), count(*) from squitters where hex(icao_addr) in ('AAADB2','ACB1F5', 'ACB5AC', 'ACB963', 'ACBF73', 'A36989', 'A50456', 'A4E445', 'A206AC' ) group by hex(icao_addr);
 
-
-
 BUCKET = 'qz-aistudio-jbfm-scratch'
-
-begin
-  additional_aircraft_str = Net::HTTP.get(URI("https://gist.githubusercontent.com/jeremybmerrill/65f3538b59032b3d66cd55165eec26b8/raw/64c78bca212c828787dc9a7eb0b26697e9fb67c4/planes.txt"))
-  additional_aircraft = Hash[*additional_aircraft_str.split("\n").map{|line| line.split(",")}.flatten(1)]
-  puts additional_aircraft
-rescue
-  additional_aircraft = {}
-end
-aircraft = copters.merge additional_aircraft
 
 mysqlclient = Mysql2::Client.new(
   :host => ENV['MYSQLHOST'],
@@ -73,19 +51,48 @@ messages_with_neighborhoods = [
   "I wonder what's going on? NYPD helicopter ~NNUM~ is up in the air at ~~TIME~~ above ~~NEIGHBORHOODS~~."
 ]
 
-
 def andify(list)
-  return list.first if list.size <= 1 
+  return list.first || '' if list.size <= 1 
   "#{list[0...-1].join(", ")} and #{list[-1]}"
 end
 
-def figure_out_if_hovering(helicopter_id, trajectory_start_time, trajectory_end_time)
-  map_image_fns = generate_shingled_maps_for_trajectory(helicopter_id, trajectory_start_time, trajectory_end_time)
-  map_image_fns.each do |map_image_fn|
-    was_it_hovering = `python classify_one_map.py #{map_image_fn}` # python classify_one_map.py N920PD-2019-04-17-0900-2019-04-17-0930.png
-  end
+def generate_shingled_maps_for_trajectory(helicopter_icao_hex, helicopter_nnum, trajectory_start_time, trajectory_end_time)
+  results = mysqlclient.query(%{
+    SELECT *, 
+      convert_tz(parsed_time, '+00:00', 'US/Eastern') datetz, 
+      conv(icao_addr, 10,16) as icao_hex
+    FROM squitters 
+    WHERE icao_addr = conv('#{helicopter_icao_hex}', 16,10) and 
+      lat is not null
+      AND parsed_time >= trajectory_start_time
+      AND parsed_time <= trajectory_end_time
+    order by parsed_time desc;}.gsub(/\s+/, " ").strip)
+
+    shingled_trajectories = trajectories.map do |traj|
+      generate_shingles_for_trajectory(traj)
+    end
+
+    # trajectories need a stable ID, as do shingles.
+    # does NNum, icao hex and start, end times do it? I suppose, right?
+    shingled_trajectories.map do |traj_shingles|
+        traj_shingles.each do |shingle|
+            next if shingle.length == 0
+            shingle_start_time = shingle[-1]["parsed_time"].to_s.gsub(/ -0\d00/, '')
+            shingle_end_time = shingle[0]["parsed_time"].to_s.gsub(/ -0\d00/, '')
+            shingle_png_fn, shingle_svg_fn = generate_shingle_map_from_shingle(shingle[0]["icao_hex"], helicopter_nnum, shingle_start_time, shingle_end_time)
+            shingle_png_fn
+        end
+    end
 end
 
+
+def figure_out_if_hovering(helicopter_id, helicopter_nnum, trajectory_start_time, trajectory_end_time)
+  map_image_fns = generate_shingled_maps_for_trajectory(helicopter_id, helicopter_nnum, trajectory_start_time, trajectory_end_time)
+  map_image_fns.each do |map_image_fn|
+    was_it_hovering = `python classify_one_map.py #{map_image_fn}` # python classify_one_map.py N920PD-2019-04-17-0900-2019-04-17-0930.png
+    # do something with was_it_hovering.
+  end
+end
 
 aircraft.each do |nnum, icao|
   begin
@@ -103,7 +110,6 @@ aircraft.each do |nnum, icao|
       order by parsed_time desc;}.gsub(/\s+/, " ").strip)
     puts "#{Time.now} results: #{results.count} (#{nnum} / #{icao})"
     next unless results.count >= 2
-    puts results.first["datetz"].inspect
 
     svg_fn = `MAXTIMEDIFF=#{10} /usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/mapify.js --n-number #{nnum}  #{icao}`
     svg_fn.strip!
@@ -112,7 +118,8 @@ aircraft.each do |nnum, icao|
 
     metadata_fn = svg_fn.gsub(".svg", ".metadata.json")
     metadata = JSON.parse(open(metadata_fn, 'r'){|f| f.read })
-
+    puts "metadata"
+    puts metadata.inspect
     neighborhood_names = metadata["nabes"] 
     
     # not currently used, just trying not to forget about 'em.
@@ -123,11 +130,6 @@ aircraft.each do |nnum, icao|
     points_cnt = metadata["points_cnt"]
 
     next if points_cnt < MIN_POINTS
-    # begin
-    #   neighborhood_names = `/usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/neighborhoods.js #{icao}`.strip.split("|")
-    # rescue StandardError => e
-    #   neighborhood_names = nil
-    # end
 
     png_datetime = Time.now.strftime("%Y-%m-%d_%H_%M_%S")
     png_fn = svg_fn[0...-4] + png_datetime +  ".png"
@@ -145,7 +147,7 @@ aircraft.each do |nnum, icao|
       svg_s3_key = File.basename(svg_fn)
       svg_obj = s3.bucket(BUCKET).object(svg_s3_key)
       svg_obj.upload_file(svg_fn, acl: "public-read", content_type: 'image/svg+xml')
-      chrome_cmd = "#{File.dirname(__FILE__)}/node_modules/puppeteer/.local-chromium/linux-609904/chrome-linux/chrome --headless --window-size=600,600  --disable-overlay-scrollbar --screenshot=#{png_fn} http://#{BUCKET}.s3.amazonaws.com/#{svg_fn}  2>/dev/null"
+      chrome_cmd = "#{CHROME_PATH} --headless --window-size=600,600  --disable-overlay-scrollbar --screenshot=#{png_fn} http://#{BUCKET}.s3.amazonaws.com/#{svg_fn}  2>/dev/null"
       puts chrome_cmd
       `#{chrome_cmd}`
     else
@@ -156,7 +158,7 @@ aircraft.each do |nnum, icao|
 
 
 
-    was_hovering = figure_out_if_hovering(icao_addr, start_recd_time, end_recd_time)
+    # was_hovering = figure_out_if_hovering(icao_addr, nnum, start_recd_time, end_recd_time)
 
 
     time_seen = results.first["datetz"].utc.getlocal
@@ -219,7 +221,6 @@ aircraft.each do |nnum, icao|
                 "image_url": "http://#{BUCKET}.s3.amazonaws.com/#{png_s3_key}",
             }
         ]
-
       }
       puts "posting to slack"
       resp = RestClient.post(creds['slack']['webhook'], JSON.dump(slack_payload), headers: {"Content-Type": "application/json"})
