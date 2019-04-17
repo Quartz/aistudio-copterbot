@@ -75,22 +75,22 @@ def generate_shingled_maps_for_trajectory(helicopter_icao_hex, helicopter_nnum, 
     # trajectories need a stable ID, as do shingles.
     # does NNum, icao hex and start, end times do it? I suppose, right?
     shingled_trajectories.map do |traj_shingles|
-        traj_shingles.each do |shingle|
+        traj_shingles.map do |shingle|
             next if shingle.length == 0
             shingle_start_time = shingle[-1]["parsed_time"].to_s.gsub(/ -0\d00/, '')
             shingle_end_time = shingle[0]["parsed_time"].to_s.gsub(/ -0\d00/, '')
             shingle_png_fn, shingle_svg_fn = generate_shingle_map_from_shingle(shingle[0]["icao_hex"], helicopter_nnum, shingle_start_time, shingle_end_time)
-            shingle_png_fn
+            [shingle_start_time, shingle_end_time, shingle_png_fn]
         end
     end
 end
 
-
 def figure_out_if_hovering(helicopter_id, helicopter_nnum, trajectory_start_time, trajectory_end_time)
   map_image_fns = generate_shingled_maps_for_trajectory(helicopter_id, helicopter_nnum, trajectory_start_time, trajectory_end_time)
-  map_image_fns.each do |map_image_fn|
+  map_image_fns.map do |map_image_fn, shingle_start_time, shingle_end_time|
     was_it_hovering = `python classify_one_map.py #{map_image_fn}` # python classify_one_map.py N920PD-2019-04-17-0900-2019-04-17-0930.png
     # do something with was_it_hovering.
+    [shingle_start_time, shingle_end_time, was_it_hovering]
   end
 end
 
@@ -157,9 +157,17 @@ aircraft.each do |nnum, icao|
     puts "png: #{png_fn}, generation took #{png_duration_secs}s"
 
 
-
-    # was_hovering = figure_out_if_hovering(icao_addr, nnum, start_recd_time, end_recd_time)
-
+    when_hovering = false
+    if false # we're just not ready yet
+      res = figure_out_if_hovering(icao_addr, nnum, start_recd_time, end_recd_time)
+      hovering_shingles = res.select{|shingle_start, shingle_end, was_hovering| was_hovering}.map{|shingle_start, shingle_end, was_hovering| [shingle_start, shingle_end]}
+      when_hovering = if hovering_shingles
+                       andify(hovering_shingles.flatten.uniq.each_slice(2).map{|a, b| "#{a} to {b}"})
+                      else 
+                        false
+                      end
+      puts "IT HOVERED: #{when_hovering}" if when_hovering
+    end
 
     time_seen = results.first["datetz"].utc.getlocal
 
@@ -182,8 +190,10 @@ aircraft.each do |nnum, icao|
         end
       end
     end
-    debug_text = "#{points_cnt} points; #{start_recd_time} to #{end_recd_time}"
+    debug_text = "#{points_cnt} points; #{start_recd_time} to #{end_recd_time}" + (when_hovering ? when_hovering : '' )
     
+    tweet_text += "AND IT WAS HOVERING" if when_hovering
+
     s3 = Aws::S3::Resource.new(region:'us-east-1')
     png_s3_base_key = File.basename(png_fn)
     png_s3_key = "airplanes/" + png_s3_base_key #.gsub(".png", '') + png_datetime +  ".png"
