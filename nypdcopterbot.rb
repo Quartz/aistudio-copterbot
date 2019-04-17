@@ -79,6 +79,14 @@ def andify(list)
   "#{list[0...-1].join(", ")} and #{list[-1]}"
 end
 
+def figure_out_if_hovering(helicopter_id, trajectory_start_time, trajectory_end_time)
+  map_image_fns = generate_shingled_maps_for_trajectory(helicopter_id, trajectory_start_time, trajectory_end_time)
+  map_image_fns.each do |map_image_fn|
+    was_it_hovering = `python classify_one_map.py #{map_image_fn}` # python classify_one_map.py N920PD-2019-04-17-0900-2019-04-17-0930.png
+  end
+end
+
+
 aircraft.each do |nnum, icao|
   begin
     # parsed_time is the current time on the rpi, so regardless of the garbage given by the airplane, that should work
@@ -145,6 +153,11 @@ aircraft.each do |nnum, icao|
     end
     png_duration_secs = Time.now - png_start_time
     puts "png: #{png_fn}, generation took #{png_duration_secs}s"
+
+
+
+    was_hovering = figure_out_if_hovering(icao_addr, start_recd_time, end_recd_time)
+
 
     time_seen = results.first["datetz"].utc.getlocal
 
