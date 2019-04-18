@@ -7,6 +7,8 @@ require 'net/http'
 require 'restclient'
 require 'aws-sdk-s3'
 require_relative "./utils"
+require 'fileutils'
+
 
 prod_mapping_interval = 10  # min, should be 15
 dev_mapping_interval = 15
@@ -37,6 +39,10 @@ unless ENV['NEVERTWEET']
   		config.access_token_secret = creds["twitter"]["secret"]
 	end
 end
+
+PNG_PATH = "/tmp/hover/"
+FileUtils.mkdir_p(PNG_PATH)
+
 messages = [
   "NYPD helicopter ~NNUM~ is in the air over New York City. I last saw it at ~~TIME~~.",
   "Chop chop chop, there goes NYPD copter ~NNUM~ flyin' over. I last saw it at ~~TIME~~.",
@@ -68,7 +74,7 @@ def generate_shingled_maps_for_trajectory(helicopter_icao_hex, helicopter_nnum, 
       AND parsed_time <= '#{trajectory_end_time}'
     order by parsed_time desc;}.gsub(/\s+/, " ").strip)
 
-    puts %{
+    puts %{shingle query: 
     SELECT *, 
       convert_tz(parsed_time, '+00:00', 'US/Eastern') datetz, 
       conv(icao_addr, 10,16) as icao_hex
@@ -78,7 +84,7 @@ def generate_shingled_maps_for_trajectory(helicopter_icao_hex, helicopter_nnum, 
       AND parsed_time >= '#{trajectory_start_time}'
       AND parsed_time <= '#{trajectory_end_time}'
     order by parsed_time desc;}.gsub(/\s+/, " ").strip
-    puts results.count
+    puts "Shingle has #{results.count} points"
     begin
       shingled_trajectory = generate_shingles_for_trajectory(results.to_a)
     rescue HelicopterShinglingError
@@ -91,7 +97,7 @@ def generate_shingled_maps_for_trajectory(helicopter_icao_hex, helicopter_nnum, 
         next if shingle.length == 0
         shingle_start_time = shingle[-1]["parsed_time"].to_s.gsub(/ -0\d00/, '')
         shingle_end_time = shingle[0]["parsed_time"].to_s.gsub(/ -0\d00/, '')
-        shingle_png_fn, shingle_svg_fn = generate_shingle_map_from_shingle(shingle[0]["icao_hex"], helicopter_nnum, shingle_start_time, shingle_end_time)
+        shingle_png_fn, shingle_svg_fn = generate_shingle_map_from_shingle(shingle[0]["icao_hex"], helicopter_nnum, shingle_start_time, shingle_end_time,  PNG_PATH)
         [shingle_start_time, shingle_end_time, shingle_png_fn]
     end
 end
@@ -133,8 +139,6 @@ aircraft.each do |nnum, icao|
 
     metadata_fn = svg_fn.gsub(".svg", ".metadata.json")
     metadata = JSON.parse(open(metadata_fn, 'r'){|f| f.read })
-    puts "metadata"
-    puts metadata.inspect
     neighborhood_names = metadata["nabes"] 
     
     # not currently used, just trying not to forget about 'em.
@@ -175,7 +179,7 @@ aircraft.each do |nnum, icao|
     when_hovering = false
     if true # we're just not ready yet
       res = figure_out_if_hovering(icao, nnum, start_recd_time, end_recd_time)
-      puts res.inspect
+      puts "when is it hovering? " + res.inspect
       hovering_shingles = res.select{|shingle_start, shingle_end, was_hovering| was_hovering}.map{|shingle_start, shingle_end, was_hovering| [shingle_start, shingle_end]}
       when_hovering = if hovering_shingles.size > 0
                        andify(hovering_shingles.flatten.uniq.each_slice(2).map{|a, b| "#{a} to {b}"})

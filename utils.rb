@@ -53,8 +53,8 @@ def generate_shingles_for_trajectory(trajectory_rows)
   shingles
 end
 
-def generate_shingle_map_from_shingle(helicopter_icao_hex, nnum, shingle_start_time, shingle_end_time, exclude_background=false)
-    shingle_svg_fn = "hover_train_svg/#{helicopter_icao_hex}_#{shingle_start_time.gsub(/[ \:]/, '_')}_#{shingle_end_time.gsub(/[ \:]/, '_')}.svg"
+def generate_shingle_map_from_shingle(helicopter_icao_hex, nnum, shingle_start_time, shingle_end_time, image_path, exclude_background=false)
+    shingle_svg_fn = File.join(image_path, "#{helicopter_icao_hex}_#{shingle_start_time.gsub(/[ \:]/, '_')}_#{shingle_end_time.gsub(/[ \:]/, '_')}.svg")
     shingle_cmd = "node ../dump1090-mapper/mapify.js #{exclude_background ? '--exclude-background' : ''} --n-number #{nnum} --start-time '#{shingle_start_time}' --end-time '#{shingle_end_time}' #{helicopter_icao_hex}"
     unless File.exists?(shingle_svg_fn) && File.new(shingle_svg_fn).size > 0
         puts shingle_cmd
