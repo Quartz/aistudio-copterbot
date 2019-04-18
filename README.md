@@ -48,3 +48,5 @@ Qz Janky Deployment:
 --------------------
 `scp -r ../nypdcopterbot/*.rb ec2-user@whatever:/home/ec2-user/nypdcopterbot/`
 `scp -r ../dump1090-mapper/*.js ec2-user@whatever:/home/ec2-user/dump1090-mapper/`
+
+https://twitter.com/lb_bklyn/status/970981102188941312

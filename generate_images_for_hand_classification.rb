@@ -77,7 +77,7 @@ if __FILE__ == $0
               shingle_start_time = shingle[-1]["parsed_time"].to_s.gsub(/ -0\d00/, '')
               shingle_end_time = shingle[0]["parsed_time"].to_s.gsub(/ -0\d00/, '')
 
-              shingle_png_fn, shingle_svg_fn = generate_shingle_map_from_shingle(shingle[0]["icao_hex"], nnum, shingle_start_time, shingle_end_time)
+              shingle_png_fn, shingle_svg_fn = generate_shingle_map_from_shingle(shingle[0]["icao_hex"], nnum, shingle_start_time, shingle_end_time, EXCLUDE_BACKGROUND)
 
               client_count = shingle.map{|row| row["client_id"]}.uniq.count
               shingles_csv << [shingle[0]["icao_hex"],

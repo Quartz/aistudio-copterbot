@@ -10,4 +10,4 @@ def main():
     # print (outputs)
     return pred_class
 
-main()
+print(main())

@@ -21,7 +21,7 @@ SCREENSHOTTER = :chrome # {:chrome, :batik}
 
 BUCKET = 'qz-aistudio-jbfm-scratch'
 
-mysqlclient = Mysql2::Client.new(
+MYSQLCLIENT = Mysql2::Client.new(
   :host => ENV['MYSQLHOST'],
   :port => ENV['MYSQLPORT'],
   :username => ENV['MYSQLUSER'] || ENV['MYSQLUSERNAME'],
@@ -57,38 +57,53 @@ def andify(list)
 end
 
 def generate_shingled_maps_for_trajectory(helicopter_icao_hex, helicopter_nnum, trajectory_start_time, trajectory_end_time)
-  results = mysqlclient.query(%{
+  results = MYSQLCLIENT.query(%{
     SELECT *, 
       convert_tz(parsed_time, '+00:00', 'US/Eastern') datetz, 
       conv(icao_addr, 10,16) as icao_hex
     FROM squitters 
     WHERE icao_addr = conv('#{helicopter_icao_hex}', 16,10) and 
       lat is not null
-      AND parsed_time >= trajectory_start_time
-      AND parsed_time <= trajectory_end_time
+      AND parsed_time >= '#{trajectory_start_time}'
+      AND parsed_time <= '#{trajectory_end_time}'
     order by parsed_time desc;}.gsub(/\s+/, " ").strip)
 
-    shingled_trajectories = trajectories.map do |traj|
-      generate_shingles_for_trajectory(traj)
+    puts %{
+    SELECT *, 
+      convert_tz(parsed_time, '+00:00', 'US/Eastern') datetz, 
+      conv(icao_addr, 10,16) as icao_hex
+    FROM squitters 
+    WHERE icao_addr = conv('#{helicopter_icao_hex}', 16,10) and 
+      lat is not null
+      AND parsed_time >= '#{trajectory_start_time}'
+      AND parsed_time <= '#{trajectory_end_time}'
+    order by parsed_time desc;}.gsub(/\s+/, " ").strip
+    puts results.count
+    begin
+      shingled_trajectory = generate_shingles_for_trajectory(results.to_a)
+    rescue HelicopterShinglingError
+      return []
     end
 
     # trajectories need a stable ID, as do shingles.
     # does NNum, icao hex and start, end times do it? I suppose, right?
-    shingled_trajectories.map do |traj_shingles|
-        traj_shingles.map do |shingle|
-            next if shingle.length == 0
-            shingle_start_time = shingle[-1]["parsed_time"].to_s.gsub(/ -0\d00/, '')
-            shingle_end_time = shingle[0]["parsed_time"].to_s.gsub(/ -0\d00/, '')
-            shingle_png_fn, shingle_svg_fn = generate_shingle_map_from_shingle(shingle[0]["icao_hex"], helicopter_nnum, shingle_start_time, shingle_end_time)
-            [shingle_start_time, shingle_end_time, shingle_png_fn]
-        end
+    shingled_trajectory.map do |shingle|
+        next if shingle.length == 0
+        shingle_start_time = shingle[-1]["parsed_time"].to_s.gsub(/ -0\d00/, '')
+        shingle_end_time = shingle[0]["parsed_time"].to_s.gsub(/ -0\d00/, '')
+        shingle_png_fn, shingle_svg_fn = generate_shingle_map_from_shingle(shingle[0]["icao_hex"], helicopter_nnum, shingle_start_time, shingle_end_time)
+        [shingle_start_time, shingle_end_time, shingle_png_fn]
     end
 end
 
 def figure_out_if_hovering(helicopter_id, helicopter_nnum, trajectory_start_time, trajectory_end_time)
   map_image_fns = generate_shingled_maps_for_trajectory(helicopter_id, helicopter_nnum, trajectory_start_time, trajectory_end_time)
-  map_image_fns.map do |map_image_fn, shingle_start_time, shingle_end_time|
-    was_it_hovering = `python classify_one_map.py #{map_image_fn}` # python classify_one_map.py N920PD-2019-04-17-0900-2019-04-17-0930.png
+  map_image_fns.map do |shingle_start_time, shingle_end_time, map_image_fn|
+    puts %{python3 classify_one_map.py "#{map_image_fn}"}
+    was_it_hovering = `python3 classify_one_map.py "#{map_image_fn}"` # python classify_one_map.py N920PD-2019-04-17-0900-2019-04-17-0930.png
+    was_it_hovering.strip!
+    puts was_it_hovering
+    was_it_hovering = was_it_hovering == 'hover'
     # do something with was_it_hovering.
     [shingle_start_time, shingle_end_time, was_it_hovering]
   end
@@ -100,7 +115,7 @@ aircraft.each do |nnum, icao|
     # however, it causes some NYPD helicopters to be tweeted too much
     # but without it, n725dt is never tweeted
     # TODO: should I modify dump1090-stream-parser so that one of the timing columns is current time on the DB? (e.g. with MYSQL @@current_time or whatever)
-    results = mysqlclient.query(%{
+    results = MYSQLCLIENT.query(%{
       SELECT *, convert_tz(parsed_time, '+00:00', 'US/Eastern') datetz 
       FROM squitters 
       WHERE icao_addr = conv('#{icao}', 16,10) and 
@@ -158,10 +173,11 @@ aircraft.each do |nnum, icao|
 
 
     when_hovering = false
-    if false # we're just not ready yet
-      res = figure_out_if_hovering(icao_addr, nnum, start_recd_time, end_recd_time)
+    if true # we're just not ready yet
+      res = figure_out_if_hovering(icao, nnum, start_recd_time, end_recd_time)
+      puts res.inspect
       hovering_shingles = res.select{|shingle_start, shingle_end, was_hovering| was_hovering}.map{|shingle_start, shingle_end, was_hovering| [shingle_start, shingle_end]}
-      when_hovering = if hovering_shingles
+      when_hovering = if hovering_shingles.size > 0
                        andify(hovering_shingles.flatten.uniq.each_slice(2).map{|a, b| "#{a} to {b}"})
                       else 
                         false
