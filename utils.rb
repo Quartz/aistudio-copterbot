@@ -53,9 +53,33 @@ def generate_shingles_for_trajectory(trajectory_rows)
   shingles
 end
 
+SCREENSHOTTER = :chrome # {:chrome, :batik}
+def screenshot_svg_to_png(svg_fn, png_fn)
+      if SCREENSHOTTER == :batik
+      # turn the SVG into a PNG with Batik.
+      `java -jar #{File.dirname(__FILE__)}/../dump1090-mapper/batik-1.8/batik-rasterizer-1.8.jar #{svg_fn}`
+    elsif SCREENSHOTTER == :chrome
+      # turn the SVG into a PNG with headless chrome
+      # s3 = Aws::S3::Resource.new(region:'us-east-1')
+      # svg_s3_key = File.basename(svg_fn)
+      # svg_obj = s3.bucket(BUCKET).object(svg_s3_key)
+      # svg_obj.upload_file(svg_fn, acl: "public-read", content_type: 'image/svg+xml')
+      chrome_cmd = "#{CHROME_PATH} --headless --window-size=600,600  --disable-overlay-scrollbar --screenshot=#{png_fn} file://#{File.absolute_path(svg_fn)}  2>/dev/null"
+      puts chrome_cmd
+      begin
+          `#{chrome_cmd}`
+      rescue e
+          puts "might be that headless chrome isn't accessible? change the path in training_data_maker.rb to point to a Chrome install, perhaps installed via npm install puppeteer"
+          raise e 
+      end
+    else
+      STDERR.puts "WARNING: no screenshotter set, you won't get PNGs, just SVGs"
+    end
+end
+
 def generate_shingle_map_from_shingle(helicopter_icao_hex, nnum, shingle_start_time, shingle_end_time, image_path, exclude_background=false)
     shingle_svg_fn = File.join(image_path, "#{helicopter_icao_hex}_#{shingle_start_time.gsub(/[ \:]/, '_')}_#{shingle_end_time.gsub(/[ \:]/, '_')}.svg")
-    shingle_cmd = "node ../dump1090-mapper/mapify.js #{exclude_background ? '--exclude-background' : ''} --n-number #{nnum} --start-time '#{shingle_start_time}' --end-time '#{shingle_end_time}' #{helicopter_icao_hex}"
+    shingle_cmd = "/usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/mapify.js #{exclude_background ? '--exclude-background' : ''} --n-number #{nnum} --start-time '#{shingle_start_time}' --end-time '#{shingle_end_time}' #{helicopter_icao_hex}"
     unless File.exists?(shingle_svg_fn) && File.new(shingle_svg_fn).size > 0
         puts shingle_cmd
         `#{shingle_cmd}` 
@@ -63,14 +87,7 @@ def generate_shingle_map_from_shingle(helicopter_icao_hex, nnum, shingle_start_t
     end
     shingle_png_fn = shingle_svg_fn.gsub("svg", "png")
     unless File.exists?(shingle_png_fn)
-        chrome_cmd = "#{CHROME_PATH} --headless --window-size=600,600 --screenshot=#{shingle_png_fn} http://localhost:8000/#{shingle_svg_fn}  2>/dev/null"
-        puts chrome_cmd
-        begin
-            `#{chrome_cmd}`
-        rescue e
-            puts "might be that headless chrome isn't accessible? change the path in training_data_maker.rb to point to a Chrome install, perhaps installed via npm install puppeteer"
-            raise e 
-        end
+      screenshot_svg_to_png(shingle_svg_fn, shingle_png_fn)
     end
     [shingle_png_fn, shingle_svg_fn]
 end

@@ -105,7 +105,7 @@ end
 def figure_out_if_hovering(helicopter_id, helicopter_nnum, trajectory_start_time, trajectory_end_time)
   map_image_fns = generate_shingled_maps_for_trajectory(helicopter_id, helicopter_nnum, trajectory_start_time, trajectory_end_time)
   map_image_fns.map do |shingle_start_time, shingle_end_time, map_image_fn|
-    puts %{python3 classify_one_map.py "#{map_image_fn}"}
+    puts %{python3 #{File.dirname(__FILE__)}/classify_one_map.py "#{map_image_fn}"}
     was_it_hovering = `python3 classify_one_map.py "#{map_image_fn}"` # python classify_one_map.py N920PD-2019-04-17-0900-2019-04-17-0930.png
     was_it_hovering.strip!
     puts was_it_hovering
@@ -157,38 +157,25 @@ aircraft.each do |nnum, icao|
 
     png_start_time = Time.now
     # on a t2.micro, this takes way too long and requires a ton of memory.
-    if SCREENSHOTTER == :batik
-      # turn the SVG into a PNG with Batik.
-      `java -jar #{File.dirname(__FILE__)}/../dump1090-mapper/batik-1.8/batik-rasterizer-1.8.jar #{svg_fn}`
-    elsif SCREENSHOTTER == :chrome
-      # turn the SVG into a PNG with headless chrome
-      s3 = Aws::S3::Resource.new(region:'us-east-1')
-      svg_s3_key = File.basename(svg_fn)
-      svg_obj = s3.bucket(BUCKET).object(svg_s3_key)
-      svg_obj.upload_file(svg_fn, acl: "public-read", content_type: 'image/svg+xml')
-      chrome_cmd = "#{CHROME_PATH} --headless --window-size=600,600  --disable-overlay-scrollbar --screenshot=#{png_fn} http://#{BUCKET}.s3.amazonaws.com/#{svg_fn}  2>/dev/null"
-      puts chrome_cmd
-      `#{chrome_cmd}`
-    else
-      STDERR.puts "WARNING: no screenshotter set, you won't get PNGs, just SVGs"
-    end
+    screenshot_svg_to_png(svg_fn, png_fn)
     png_duration_secs = Time.now - png_start_time
     puts "png: #{png_fn}, generation took #{png_duration_secs}s"
 
 
+    # is it hovering?
     when_hovering = false
-    if true # we're just not ready yet
-      res = figure_out_if_hovering(icao, nnum, start_recd_time, end_recd_time)
-      puts "when is it hovering? " + res.inspect
-      hovering_shingles = res.select{|shingle_start, shingle_end, was_hovering| was_hovering}.map{|shingle_start, shingle_end, was_hovering| [shingle_start, shingle_end]}
-      when_hovering = if hovering_shingles.size > 0
-                       andify(hovering_shingles.flatten.uniq.each_slice(2).map{|a, b| "#{a} to {b}"})
-                      else 
-                        false
-                      end
-      puts "IT HOVERED: #{when_hovering}" if when_hovering
-    end
+    res = figure_out_if_hovering(icao, nnum, start_recd_time, end_recd_time)
+    puts "when is it hovering? " + res.inspect
+    hovering_shingles = res.select{|shingle_start, shingle_end, was_hovering| was_hovering}.map{|shingle_start, shingle_end, was_hovering| [shingle_start, shingle_end]}
+    when_hovering = if hovering_shingles.size > 0
+                     andify(hovering_shingles.flatten.uniq.each_slice(2).map{|a, b| "#{a} to {b}"})
+                    else 
+                      false
+                    end
+    puts "IT HOVERED: #{when_hovering}" if when_hovering
 
+
+    # coming up with the text to tweet/post
     time_seen = results.first["datetz"].utc.getlocal
 
     if neighborhood_names.nil? || !nnum.include?("PD") 
@@ -212,8 +199,10 @@ aircraft.each do |nnum, icao|
     end
     debug_text = "#{points_cnt} points; #{start_recd_time} to #{end_recd_time}" + (when_hovering ? when_hovering : '' )
     
-    tweet_text += "AND IT WAS HOVERING" if when_hovering
+    tweet_text += " AND IT WAS HOVERING" if when_hovering
 
+
+    # uploading the image to S3, for Slack.
     s3 = Aws::S3::Resource.new(region:'us-east-1')
     png_s3_base_key = File.basename(png_fn)
     png_s3_key = "airplanes/" + png_s3_base_key #.gsub(".png", '') + png_datetime +  ".png"
@@ -225,6 +214,8 @@ aircraft.each do |nnum, icao|
     metadata_obj = s3.bucket(BUCKET).object(metadata_s3_key)
     metadata_obj.upload_file(new_metadata_fn, acl: "public-read", content_type: "application/json")
 
+
+    # actually tweeting
     puts "trying to tweet \"#{tweet_text}\" in #{delay} min"
     if !ENV["NEVERTWEET"] || !ENV["NEVERTOOT"]
       sleep delay * 60
