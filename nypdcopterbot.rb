@@ -106,7 +106,7 @@ def figure_out_if_hovering(helicopter_id, helicopter_nnum, trajectory_start_time
   map_image_fns = generate_shingled_maps_for_trajectory(helicopter_id, helicopter_nnum, trajectory_start_time, trajectory_end_time)
   map_image_fns.map do |shingle_start_time, shingle_end_time, map_image_fn|
     puts %{python3 #{File.dirname(__FILE__)}/classify_one_map.py "#{map_image_fn}"}
-    was_it_hovering = `python3 classify_one_map.py "#{map_image_fn}"` # python classify_one_map.py N920PD-2019-04-17-0900-2019-04-17-0930.png
+    was_it_hovering = `python3 #{File.dirname(__FILE__)}/classify_one_map.py "#{map_image_fn}"` # python classify_one_map.py N920PD-2019-04-17-0900-2019-04-17-0930.png
     was_it_hovering.strip!
     puts was_it_hovering
     was_it_hovering = was_it_hovering == 'hover'
@@ -164,11 +164,19 @@ aircraft.each do |nnum, icao|
 
     # is it hovering?
     when_hovering = false
+    start_time_for_trajectory = (DateTime.parse(end_recd_time) - (1.0/24/4)).to_s.split("+")[0].gsub("T", " ")
+    # only look back 15 minutes (for longer trajectories it's a waste of time to re-calculate whether it was hovering 45 minutes ago -- since we've already figured it out)
+    print("start_recd_time", start_recd_time)
+    print("start_time_for_trajectory", start_time_for_trajectory)
     res = figure_out_if_hovering(icao, nnum, start_recd_time, end_recd_time)
     puts "when is it hovering? " + res.inspect
     hovering_shingles = res.select{|shingle_start, shingle_end, was_hovering| was_hovering}.map{|shingle_start, shingle_end, was_hovering| [shingle_start, shingle_end]}
     when_hovering = if hovering_shingles.size > 0
-                     andify(hovering_shingles.flatten.uniq.each_slice(2).map{|a, b| "#{a} to {b}"})
+                      shingle_time_count = Hash[*hovering_shingles.flatten.group_by{|a| a}.map{|k, v| [k, v.count]}.flatten]
+                      shingle_times = hovering_shingles.flatten.reject{|x| shingle_time_count[x] == 2} # exclude times that occur twice
+                      puts shingle_times.inspect
+                      shingle_times.map!{|timestamp| timestamp.split("T")[1]}
+                      andify(shingle_times.each_slice(2).map{|a, b| "#{a} to #{b}"})
                     else 
                       false
                     end
@@ -197,7 +205,7 @@ aircraft.each do |nnum, icao|
         end
       end
     end
-    debug_text = "#{points_cnt} points; #{start_recd_time} to #{end_recd_time}" + (when_hovering ? when_hovering : '' )
+    debug_text = "#{points_cnt} points; #{start_recd_time.gsub(".000Z", '').gsub("T", " ")} to #{end_recd_time.gsub(".000Z", '').gsub("T", " ")}" + (when_hovering ? ("HOVERED: " + when_hovering) : '' )
     
     tweet_text += " AND IT WAS HOVERING" if when_hovering
 
@@ -217,6 +225,7 @@ aircraft.each do |nnum, icao|
 
     # actually tweeting
     puts "trying to tweet \"#{tweet_text}\" in #{delay} min"
+    puts "debug text: #{debug_text}"
     if !ENV["NEVERTWEET"] || !ENV["NEVERTOOT"]
       sleep delay * 60
     end
