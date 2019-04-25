@@ -175,7 +175,7 @@ aircraft.each do |nnum, icao|
                       shingle_time_count = Hash[*hovering_shingles.flatten.group_by{|a| a}.map{|k, v| [k, v.count]}.flatten]
                       shingle_times = hovering_shingles.flatten.reject{|x| shingle_time_count[x] == 2} # exclude times that occur twice
                       puts shingle_times.inspect
-                      shingle_times.map!{|timestamp| timestamp.split("T")[1]}
+                      shingle_times.map!{|timestamp| timestamp.split(" ")[1]}
                       andify(shingle_times.each_slice(2).map{|a, b| "#{a} to #{b}"})
                     else 
                       false
@@ -205,7 +205,7 @@ aircraft.each do |nnum, icao|
         end
       end
     end
-    debug_text = "#{points_cnt} points; #{start_recd_time.gsub(".000Z", '').gsub("T", " ")} to #{end_recd_time.gsub(".000Z", '').gsub("T", " ")}" + (when_hovering ? ("HOVERED: " + when_hovering) : '' )
+    debug_text = "#{points_cnt} points; #{start_recd_time.gsub(".000Z", '').gsub("T", " ")} to #{end_recd_time.gsub(".000Z", '').gsub("T", " ")}" + (when_hovering ? (" HOVERED: " + when_hovering) : '' )
     
     tweet_text += " AND IT WAS HOVERING" if when_hovering
 
