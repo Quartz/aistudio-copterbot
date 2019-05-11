@@ -17,8 +17,6 @@ delay = 0 # min, default 5 min
 
 MIN_POINTS = 3 # number of points to require before tweeting a map. probably actually ought to be more!
 
-SCREENSHOTTER = :chrome # {:chrome, :batik}
-
 # select hex(icao_addr), count(*) from squitters where hex(icao_addr) in ('AAADB2','ACB1F5', 'ACB5AC', 'ACB963', 'ACBF73', 'A36989', 'A50456', 'A4E445', 'A206AC' ) group by hex(icao_addr);
 
 BUCKET = 'qz-aistudio-jbfm-scratch'
@@ -74,16 +72,6 @@ def generate_shingled_maps_for_trajectory(helicopter_icao_hex, helicopter_nnum, 
       AND parsed_time <= '#{trajectory_end_time}'
     order by parsed_time desc;}.gsub(/\s+/, " ").strip)
 
-    puts %{shingle query: 
-    SELECT *, 
-      convert_tz(parsed_time, '+00:00', 'US/Eastern') datetz, 
-      conv(icao_addr, 10,16) as icao_hex
-    FROM squitters 
-    WHERE icao_addr = conv('#{helicopter_icao_hex}', 16,10) and 
-      lat is not null
-      AND parsed_time >= '#{trajectory_start_time}'
-      AND parsed_time <= '#{trajectory_end_time}'
-    order by parsed_time desc;}.gsub(/\s+/, " ").strip
     puts "Shingle has #{results.count} points"
     begin
       shingled_trajectory = generate_shingles_for_trajectory(results.to_a)
@@ -97,21 +85,22 @@ def generate_shingled_maps_for_trajectory(helicopter_icao_hex, helicopter_nnum, 
         next if shingle.length == 0
         shingle_start_time = shingle[-1]["parsed_time"].to_s.gsub(/ -0\d00/, '')
         shingle_end_time = shingle[0]["parsed_time"].to_s.gsub(/ -0\d00/, '')
-        shingle_png_fn, shingle_svg_fn = generate_shingle_map_from_shingle(shingle[0]["icao_hex"], helicopter_nnum, shingle_start_time, shingle_end_time,  PNG_PATH)
-        [shingle_start_time, shingle_end_time, shingle_png_fn]
+        shingle_png_fn, shingle_svg_fn, shingle_metadata_fn = generate_shingle_map_from_shingle(shingle[0]["icao_hex"], helicopter_nnum, shingle_start_time, shingle_end_time,  PNG_PATH)        
+        [shingle_start_time, shingle_end_time, shingle_png_fn, shingle_metadata_fn]
     end
 end
 
 def figure_out_if_hovering(helicopter_id, helicopter_nnum, trajectory_start_time, trajectory_end_time)
   map_image_fns = generate_shingled_maps_for_trajectory(helicopter_id, helicopter_nnum, trajectory_start_time, trajectory_end_time)
-  map_image_fns.map do |shingle_start_time, shingle_end_time, map_image_fn|
+  map_image_fns.map do |shingle_start_time, shingle_end_time, map_image_fn, shingle_metadata_fn|
     puts %{python3 #{File.dirname(__FILE__)}/classify_one_map.py "#{map_image_fn}"}
+    shingle_metadata = JSON.parse(open(shingle_metadata_fn, 'r'){|f| f.read })
     was_it_hovering = `python3 #{File.dirname(__FILE__)}/classify_one_map.py "#{map_image_fn}"` # python classify_one_map.py N920PD-2019-04-17-0900-2019-04-17-0930.png
     was_it_hovering.strip!
     puts was_it_hovering
     was_it_hovering = was_it_hovering == 'hover'
     # do something with was_it_hovering.
-    [shingle_start_time, shingle_end_time, was_it_hovering]
+    [shingle_start_time, shingle_end_time, was_it_hovering, shingle_metadata["centerpoint"]]
   end
 end
 
@@ -132,6 +121,7 @@ aircraft.each do |nnum, icao|
     puts "#{Time.now} results: #{results.count} (#{nnum} / #{icao})"
     next unless results.count >= 2
 
+    # generate the SVG to tweet
     svg_fn = `MAXTIMEDIFF=#{10} /usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/mapify.js --n-number #{nnum}  #{icao}`
     svg_fn.strip!
     puts "svg: #{svg_fn.inspect}"    
@@ -156,7 +146,6 @@ aircraft.each do |nnum, icao|
     File.rename(metadata_fn, new_metadata_fn)
 
     png_start_time = Time.now
-    # on a t2.micro, this takes way too long and requires a ton of memory.
     screenshot_svg_to_png(svg_fn, png_fn)
     png_duration_secs = Time.now - png_start_time
     puts "png: #{png_fn}, generation took #{png_duration_secs}s"
@@ -166,22 +155,37 @@ aircraft.each do |nnum, icao|
     when_hovering = false
     start_time_for_trajectory = (DateTime.parse(end_recd_time) - (1.0/24/4)).to_s.split("+")[0].gsub("T", " ")
     # only look back 15 minutes (for longer trajectories it's a waste of time to re-calculate whether it was hovering 45 minutes ago -- since we've already figured it out)
-    print("start_recd_time", start_recd_time)
-    print("start_time_for_trajectory", start_time_for_trajectory)
+    puts("start_recd_time", start_recd_time)
+    puts("start_time_for_trajectory", start_time_for_trajectory)
     res = figure_out_if_hovering(icao, nnum, start_recd_time, end_recd_time)
     puts "when is it hovering? " + res.inspect
-    hovering_shingles = res.select{|shingle_start, shingle_end, was_hovering| was_hovering}.map{|shingle_start, shingle_end, was_hovering| [shingle_start, shingle_end]}
+    hovering_shingles = res.select{|shingle_start, shingle_end, was_hovering, centerpoint| was_hovering}.map{|shingle_start, shingle_end, was_hovering, centerpoint| [shingle_start, shingle_end]}
+
+    latest_shingle_centerpoint = res.select{|shingle_start, shingle_end, was_hovering, centerpoint| was_hovering}.sort_by{|shingle_start, shingle_end, was_hovering, centerpoint| shingle_end }.map{|shingle_start, shingle_end, was_hovering, centerpoint| centerpoint }[-1]
+    shingle_centerpoints = Hash[*res.select{|shingle_start, shingle_end, was_hovering, centerpoint| was_hovering}.map{|shingle_start, shingle_end, was_hovering, centerpoint| [[shingle_start, shingle_end], centerpoint] }.flatten(1)]
     when_hovering = if hovering_shingles.size > 0
                       shingle_time_count = Hash[*hovering_shingles.flatten.group_by{|a| a}.map{|k, v| [k, v.count]}.flatten]
                       shingle_times = hovering_shingles.flatten.reject{|x| shingle_time_count[x] == 2} # exclude times that occur twice
                       puts shingle_times.inspect
-                      shingle_times.map!{|timestamp| timestamp.split(" ")[1]}
-                      andify(shingle_times.each_slice(2).map{|a, b| "#{a} to #{b}"})
+                      andify(shingle_times.each_slice(2).map{|a, b| "#{a.split(" ")[1]} to #{b.split(" ")[1]} at #{shingle_centerpoints[[a,b]]}"})
                     else 
                       false
                     end
     puts "IT HOVERED: #{when_hovering}" if when_hovering
 
+    if when_hovering
+      arbitrary_marker = latest_shingle_centerpoint ? "--arbitrary-marker=#{latest_shingle_centerpoint['lon']},#{latest_shingle_centerpoint['lat']}" : ''
+      svg_fn = `MAXTIMEDIFF=#{10} /usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/mapify.js --n-number #{nnum} #{arbitrary_marker} #{icao}`
+      png_datetime = Time.now.strftime("%Y-%m-%d_%H_%M_%S")
+      png_fn = svg_fn[0...-4] + png_datetime +  ".png"
+      new_metadata_fn = metadata_fn.gsub(".metadata.json", "-" + png_datetime + ".metadata.json")
+      File.rename(metadata_fn, new_metadata_fn)
+
+      png_start_time = Time.now
+      screenshot_svg_to_png(svg_fn, png_fn)
+      png_duration_secs = Time.now - png_start_time
+      puts "new png: #{png_fn}, generation took #{png_duration_secs}s"
+    end
 
     # coming up with the text to tweet/post
     time_seen = results.first["datetz"].utc.getlocal
@@ -205,7 +209,7 @@ aircraft.each do |nnum, icao|
         end
       end
     end
-    debug_text = "#{points_cnt} points; #{start_recd_time.gsub(".000Z", '').gsub("T", " ")} to #{end_recd_time.gsub(".000Z", '').gsub("T", " ")}" + (when_hovering ? (" HOVERED: " + when_hovering) : '' )
+    debug_text = "#{points_cnt} points; #{start_recd_time.gsub(".000Z", '').gsub("T", " ")} to #{end_recd_time.gsub(".000Z", '').gsub("T", " ")}" + (when_hovering ? (" HOVERED: " + when_hovering ) : '' )
     
     tweet_text += " AND IT WAS HOVERING" if when_hovering
 
@@ -238,7 +242,7 @@ aircraft.each do |nnum, icao|
       media_json = RestClient.post "#{creds['botsinspace']["instance"]}/api/v1/media", {:file => File.new(png_fn)}, {:Authorization => "Bearer #{creds["botsinspace"]["access_token"]}"}
       media =  JSON.parse(media_json.body)
       status_json = RestClient.post "#{creds['botsinspace']["instance"]}/api/v1/statuses", {:status => tweet_text, :media_ids => [media["id"]], :visibility => "public"}, {:Authorization => "Bearer #{creds["botsinspace"]["access_token"]}"}
-      $stderr.puts (JSON.parse(status_json.body).inspect)
+      # $stderr.puts (JSON.parse(status_json.body).inspect)
     else
       puts "but not really tooting"
     end
@@ -255,7 +259,12 @@ aircraft.each do |nnum, icao|
       puts "posting to slack"
       resp = RestClient.post(creds['slack']['webhook'], JSON.dump(slack_payload), headers: {"Content-Type": "application/json"})
     end
-
+    puts "done at #{Time.now}"
+    puts "\n"
+    puts "\n"
+    puts "\n"
+    puts "\n"
+    puts "\n"
   rescue StandardError => e
     puts e.inspect
     puts e.backtrace

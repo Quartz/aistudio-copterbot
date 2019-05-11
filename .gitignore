@@ -1,4 +1,7 @@
 *.png
+*.pickle
+*.csv
+*.zip
 .DS_Store
 *.svg
 *.metadata.json

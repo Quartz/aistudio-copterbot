@@ -15,7 +15,7 @@ def aircraft
   begin
     additional_aircraft_str = Net::HTTP.get(URI("https://gist.githubusercontent.com/jeremybmerrill/65f3538b59032b3d66cd55165eec26b8/raw/64c78bca212c828787dc9a7eb0b26697e9fb67c4/planes.txt"))
     additional_aircraft = Hash[*additional_aircraft_str.split("\n").map{|line| line.split(",")}.flatten(1)]
-    puts additional_aircraft
+    puts "additional aircraft: " + additional_aircraft
   rescue
     additional_aircraft = {}
   end
@@ -34,7 +34,7 @@ CHROME_PATH = if `whoami`.include?("ec2-user")
               end
 
 def generate_shingles_for_trajectory(trajectory_rows)
-  raise HelicopterShinglingError, "trajectory is too short (temporally) to generate shingles" if (trajectory_rows[0]['datetz'] - trajectory_rows[-1]['datetz']) < SHINGLE_DURATION_SECS
+  raise HelicopterShinglingError, "trajectory is too short (temporally) to generate shingles" if trajectory_rows.size == 0 || (trajectory_rows[0]['datetz'] - trajectory_rows[-1]['datetz']) < SHINGLE_DURATION_SECS
   traj_duration_secs = (trajectory_rows[0]['datetz'] - trajectory_rows[-1]['datetz']).abs 
   shingles_cnt = ((traj_duration_secs / (SHINGLE_DURATION_SECS)) * 2).to_i
   puts "shingles count: #{shingles_cnt} over #{(traj_duration_secs/60).to_i} min"
@@ -79,15 +79,18 @@ end
 
 def generate_shingle_map_from_shingle(helicopter_icao_hex, nnum, shingle_start_time, shingle_end_time, image_path, exclude_background=false)
     shingle_svg_fn = File.join(image_path, "#{helicopter_icao_hex}_#{shingle_start_time.gsub(/[ \:]/, '_')}_#{shingle_end_time.gsub(/[ \:]/, '_')}.svg")
+    shingle_metadata_fn = shingle_svg_fn.gsub(".svg", ".metadata.json")
     shingle_cmd = "/usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/mapify.js #{exclude_background ? '--exclude-background' : ''} --n-number #{nnum} --start-time '#{shingle_start_time}' --end-time '#{shingle_end_time}' #{helicopter_icao_hex}"
     unless File.exists?(shingle_svg_fn) && File.new(shingle_svg_fn).size > 0
         puts shingle_cmd
-        `#{shingle_cmd}` 
+        `#{shingle_cmd}`
         File.rename("#{nnum}.svg", shingle_svg_fn)
+        File.rename("#{nnum}.metadata.json", shingle_metadata_fn)
     end
     shingle_png_fn = shingle_svg_fn.gsub("svg", "png")
     unless File.exists?(shingle_png_fn)
       screenshot_svg_to_png(shingle_svg_fn, shingle_png_fn)
     end
-    [shingle_png_fn, shingle_svg_fn]
+
+    [shingle_png_fn, shingle_svg_fn, shingle_metadata_fn]
 end
