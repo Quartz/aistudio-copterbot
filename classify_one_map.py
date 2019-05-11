@@ -9,6 +9,7 @@ def main():
     # print (pred_class)
     # print (pred_idx)
     # print (outputs)
+    print(outputs[0], file=sys.stderr)
     return pred_class
 
 print(main())

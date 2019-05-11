@@ -15,7 +15,7 @@ This bot aims to help solve that problem, at least a little bit, by:
  3. calculating the center point of the circles they make while flying -- with geometry
  4. figuring out what happened at that point around that time -- with machine learning
 
-So far, #1 is solved.
+So far, #1, #2 and #3 are at least partially solved.
 
 Fun fact!
 ---------
@@ -42,6 +42,12 @@ Once we've assembled a decent-sized corpus of helicopter flights, we need figure
 2. Create the `hand_coded_training_data` folder and COPY `hover_train_png` into `hand_coded_training_data/hover_train_png_hover_only` (not move, copy). Then, leaf through the images and delete all the ones that do not depict hovering. Use your judgment.
 3. With `generate_training_data_from_handclassified_shingles.rb`, generate `training_data.csv`, which should soon include data about each shingle, plus features we generated. If you use additional `..._hover_only` folders in `hand_coded_training_data` be srue to record them in the Ruby script.
 4. Then do some scikitlearn magic...
+
+
+Matching centerpoints to events
+-------------------------------
+
+Experiment. Download from Google sheets [Tweets by NYCFireWire](https://docs.google.com/spreadsheets/d/1Z8kI0FhtHVOSp__CliM-GQjzj8JDue5DR2StBPzQwbo/edit#gid=0). Run `nycfirewire_parser.rb`. Upload the resulting `NYCFireWire_tweets.csv` to the TAMU Batch geocoder. Download that to `NYCFireWire_tw.csv` and you have points for that guy's tweets.
 
 
 Qz Janky Deployment:
