@@ -8,7 +8,7 @@ require 'aws-sdk-s3'
 require 'csv'
 require 'fileutils'
 require_relative "./utils"
-
+require 'json'
 # for all the copters
 # generate shingled (i.e. overlapping) trajectories of NN minutes, let's say 5?
 # and make a map of each of them
@@ -18,7 +18,7 @@ require_relative "./utils"
 FileUtils.mkdir_p("hover_train_svg")
 FileUtils.mkdir_p("hover_train_png")
 
-EXCLUDE_BACKGROUND = true
+EXCLUDE_BACKGROUND = false
 
 if __FILE__ == $0
   mysqlclient = Mysql2::Client.new(
@@ -77,13 +77,16 @@ if __FILE__ == $0
               shingle_start_time = shingle[-1]["parsed_time"].to_s.gsub(/ -0\d00/, '')
               shingle_end_time = shingle[0]["parsed_time"].to_s.gsub(/ -0\d00/, '')
 
-              shingle_png_fn, shingle_svg_fn = generate_shingle_map_from_shingle(shingle[0]["icao_hex"], nnum, shingle_start_time, shingle_end_time, "hover_train_svg", EXCLUDE_BACKGROUND)
+              shingle_png_fn, shingle_svg_fn, shingle_metadata_fn = generate_shingle_map_from_shingle(shingle[0]["icao_hex"], nnum, shingle_start_time, shingle_end_time, "hover_train_svg", EXCLUDE_BACKGROUND)
+
+              centerpoint = open(shingle_metadata_fn){|metadata_file| JSON.load(metadata_file)['centerpoint'] }  
 
               client_count = shingle.map{|row| row["client_id"]}.uniq.count
               shingles_csv << [shingle[0]["icao_hex"],
                       shingle_start_time,
                       shingle_end_time,
-                      shingle_svg_fn, shingle_png_fn,
+                      shingle_svg_fn, shingle_png_fn, shingle_metadata_fn,
+                      centerpoint,
                       client_count
                       ] + shingle.map{|pt| [pt["lat"].to_f.round(6), pt["lon"].to_f.round(6)]}
           end
@@ -103,4 +106,5 @@ if __FILE__ == $0
 
 
   end
+  shingles_csv.close
 end

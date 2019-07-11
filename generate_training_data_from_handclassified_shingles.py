@@ -230,7 +230,7 @@ with open("training_data.csv", 'w') as csvout:
   with open("shingles.csv") as csvin:
     shingles_reader = csv.reader(csvin)
     for row in shingles_reader:
-      icao_hex, shingle_start_time, shingle_end_time, shingle_svg_fn, shingle_png_fn, client_count, *points = row
+      icao_hex, shingle_start_time, shingle_end_time, shingle_svg_fn, shingle_png_fn, shingle_metadata_fn, client_count,  *points = row
 
       if not any(map(lambda folder: exists(join("hand_coded_training_data", folder, basename(shingle_png_fn))), folders['all'])):
         print("missing file {}".format(shingle_png_fn))
