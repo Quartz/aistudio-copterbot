@@ -42,18 +42,32 @@ PNG_PATH = "/tmp/hover/"
 FileUtils.mkdir_p(PNG_PATH)
 
 messages = [
-  "NYPD helicopter ~NNUM~ is in the air over New York City. I last saw it at ~~TIME~~.",
-  "Chop chop chop, there goes NYPD copter ~NNUM~ flyin' over. I last saw it at ~~TIME~~.",
-  "I wonder what's going on? NYPD chopper ~NNUM~ is up in the air. I last saw it at ~~TIME~~."
+  "NYPD helicopter ~NNUM~ is in the air over New York City. I last saw it at ~TIME2~.",
+  "Chop chop chop, there goes NYPD copter ~NNUM~ flyin' over. I last saw it at ~TIME2~.",
+  "I wonder what's going on? NYPD chopper ~NNUM~ is up in the air. I last saw it at ~TIME2~."
   #........................................................................................................................................
 ]
-non_pd_msg = "Interesting plane ~NNUM~ is flying. I last saw it at ~~TIME~~."
+non_pd_msg = "Interesting plane ~NNUM~ is flying. I last saw it at ~TIME2~."
 
 messages_with_neighborhoods = [
-  "NYPD helicopter ~NNUM~ is in the air over ~~NEIGHBORHOODS~~. I last saw it at ~~TIME~~.",
-  "Chop chop chop, there goes NYPD helicopter ~NNUM~ flyin' over ~~NEIGHBORHOODS~~. Last seen at ~~TIME~~.",
-  "I wonder what's going on? NYPD helicopter ~NNUM~ is up in the air at ~~TIME~~ above ~~NEIGHBORHOODS~~."
+  "NYPD helicopter ~NNUM~ is in the air over ~NEIGHBORHOODS~. I last saw it at ~TIME2~.",
+  "Chop chop chop, there goes NYPD helicopter ~NNUM~ flyin' over ~NEIGHBORHOODS~. Last seen at ~TIME2~.",
+  "I wonder what's going on? NYPD helicopter ~NNUM~ is up in the air at ~TIME2~ above ~NEIGHBORHOODS~."
 ]
+
+new_sayings = [
+  "Sorry you got woken up… NYPD helicopter ~NNUM~ was hovering over ~HOVERNEIGHBORHOODS~ from about ~TIME1~ to ~TIME2~. Do you have any idea why? Reply and let us know.",
+  "You aren’t imagining it, that helicopter has been there a while. We’ve detected that NYPD helicopter ~NNUM~ was hovering over ~HOVERNEIGHBORHOODS~ for ~DURATION~ just now. We want to find out why. Do you know? Tell us!",
+  "Welp, ~HOVERNEIGHBORHOODS~, that helicopter has been hovering there for a while, no? Hope you weren’t trying to, you know, sleep or, like, talk or anything. 🙄 Got a clue what’s happening nearby that NYPD is responding to? Tell us!",
+  "CHOP CHOP chop chop … [silence] … chop chop chop … [silence] … chop CHOP CHOP.\n\n That police helicopter’s been hovering over ~HOVERNEIGHBORHOODS~ since ~TIME1~… Wonder what it’s up to? Stay tuned. If you know, say so below (plz!).",
+  "CHOP CHOP chop chop … [silence] … chop chop chop … [silence] … chop CHOP CHOP.\n\n That police helicopter’s been hovering overhead since ~TIME1~… Wonder what it’s up to? Stay tuned. If you know, say so below (plz!).",
+  "There’s an NYPD helicopter hovering over ~BRIDGENAME~. Probably traffic, but maybe not. Do you know what’s happening?",
+]
+
+# still hovering or not?
+# neighborhoods or not?
+# bridge or not?
+
 
 def andify(list)
   return list.first || '' if list.size <= 1 
@@ -93,7 +107,6 @@ end
 def figure_out_if_hovering(helicopter_id, helicopter_nnum, trajectory_start_time, trajectory_end_time)
   map_image_fns = generate_shingled_maps_for_trajectory(helicopter_id, helicopter_nnum, trajectory_start_time, trajectory_end_time)
   map_image_fns.map do |shingle_start_time, shingle_end_time, map_image_fn, shingle_metadata_fn|
-    puts %{python3 #{File.dirname(__FILE__)}/classify_one_map.py "#{map_image_fn}"}
     shingle_metadata = JSON.parse(open(shingle_metadata_fn, 'r'){|f| f.read })
     was_it_hovering = `python3 #{File.dirname(__FILE__)}/classify_one_map.py "#{map_image_fn}"` # python classify_one_map.py N920PD-2019-04-17-0900-2019-04-17-0930.png
     was_it_hovering.strip!
@@ -130,6 +143,7 @@ aircraft.each do |nnum, icao|
     metadata_fn = svg_fn.gsub(".svg", ".metadata.json")
     metadata = JSON.parse(open(metadata_fn, 'r'){|f| f.read })
     neighborhood_names = metadata["nabes"] 
+    hover_neighborhood_names = metadata["hover_nabes"]
     
     # not currently used, just trying not to forget about 'em.
     start_recd_time = metadata["start_recd_time"]
@@ -188,34 +202,58 @@ aircraft.each do |nnum, icao|
     end
 
     # coming up with the text to tweet/post
-    time_seen = results.first["datetz"].utc.getlocal
+    latest_time_seen = results.first["datetz"].utc.getlocal
+    first_time_seen = results.to_a.last["datetz"].utc.getlocal
+    flight_duration_mins = (latest_time_seen - first_time_seen) / 60
 
-    if neighborhood_names.nil? || !nnum.include?("PD") 
-      tweet_text = nnum.include?("PD") ? messages.sample.dup : non_pd_msg
-      tweet_text.gsub!("~NNUM~", nnum)
-      tweet_text.gsub!("~~TIME~~", time_seen.strftime("%-I:%M %p") )
-      #                 11:15 PM
-    else
-      tweet_text = messages_with_neighborhoods.sample.dup
-      tweet_text.gsub!("~NNUM~", nnum)
-      tweet_text.gsub!("~~TIME~~", time_seen.strftime("%-I:%M %p") )
-      while neighborhood_names.size
-        possible_tweet_text = tweet_text.gsub("~~NEIGHBORHOODS~~", andify(neighborhood_names) )
-        if possible_tweet_text.size < 140
+    duration_str = flight_duration_mins > 120 ? "#{flight_duration_mins / 60} hours and #{flight_duration_mins % 60} mins" : (flight_duration_mins > 60 ? "#{flight_duration_mins / 60} hour and #{flight_duration_mins % 60} mins" : "#{flight_duration_mins} mins")
+
+    bridge_names = neighborhood_names.select{|name| name.match(/Bridge$/)}
+    if ENV["ONLY_TWEET_HOVERS"]
+      return if !nnum.include?("PD") # don't tweet non-police aircraft
+      tweet_text = (neighborhood_names.nil? ? new_sayings.select{|txt| txt.include?("NEIGHBORHOODS~") } : (bridge_names.empty? ? new_sayings.reject{|txt| txt.include?("~BRIDGENAME~")} : new_sayings )).sample.dup
+      while hover_neighborhood_names.size > 0
+        possible_tweet_text = tweet_text.gsub("~HOVERNEIGHBORHOODS~", andify(hover_neighborhood_names) )
+        if possible_tweet_text.size < 280
           tweet_text = possible_tweet_text
           break
         else
-          neighborhood_names.pop
+          hover_neighborhood_names.pop
+        end
+      end
+
+    else # older style.
+      if neighborhood_names.nil? || !nnum.include?("PD") 
+        tweet_text = nnum.include?("PD") ? messages.sample.dup : non_pd_msg
+        #                 11:15 PM
+      else
+        tweet_text = messages_with_neighborhoods.sample.dup
+        while neighborhood_names.size
+          possible_tweet_text = tweet_text.gsub("~NEIGHBORHOODS~", andify(neighborhood_names) )
+          if possible_tweet_text.size < 280
+            tweet_text = possible_tweet_text
+            break
+          else
+            neighborhood_names.pop
+          end
         end
       end
     end
+
+    tweet_text.gsub!("~NNUM~", nnum)
+    tweet_text.gsub!("~TIME1~", first_time_seen.strftime("%-I:%M %p") )
+    tweet_text.gsub!("~TIME2~", latest_time_seen.strftime("%-I:%M %p") )
+    tweet_text.gsub!("~DURATION~", "#{((latest_time_seen - first_time_seen) / 60).to_i} min" )
+    tweet_text.gsub!("~BRIDGENAME~", andify(hover_neighborhood_names.select{|name| name.match(/Bridge$/)}))
+
     debug_text = "#{points_cnt} points; #{start_recd_time.gsub(".000Z", '').gsub("T", " ")} to #{end_recd_time.gsub(".000Z", '').gsub("T", " ")}" + (when_hovering ? (" HOVERED: " + when_hovering ) : '' )
     
-    tweet_text += " AND IT WAS HOVERING" if when_hovering
+    debug_text += " AND IT WAS HOVERING" if when_hovering
 
 
     # uploading the image to S3, for Slack.
-    s3 = Aws::S3::Resource.new(region:'us-east-1')
+    s3 = Aws::S3::Resource.new(region:'us-east-1', signature_version: 'v4')
+
     png_s3_base_key = File.basename(png_fn)
     png_s3_key = "airplanes/" + png_s3_base_key #.gsub(".png", '') + png_datetime +  ".png"
     png_obj = s3.bucket(BUCKET).object(png_s3_key)
@@ -234,14 +272,16 @@ aircraft.each do |nnum, icao|
       sleep delay * 60
     end
     unless ENV["NEVERTWEET"]
-      twitterclient.update_with_media(tweet_text, File.new(png_fn)) 
+      twitterclient.update_with_media(tweet_text, File.new(png_fn), lat: latest_shingle_centerpoint['lat'], long: latest_shingle_centerpoint['lon']) if (!ENV["ONLY_TWEET_HOVERS"] || when_hovering ) 
     else
       puts "but not really tweeting"
     end
     unless ENV["NEVERTOOT"]
-      media_json = RestClient.post "#{creds['botsinspace']["instance"]}/api/v1/media", {:file => File.new(png_fn)}, {:Authorization => "Bearer #{creds["botsinspace"]["access_token"]}"}
-      media =  JSON.parse(media_json.body)
-      status_json = RestClient.post "#{creds['botsinspace']["instance"]}/api/v1/statuses", {:status => tweet_text, :media_ids => [media["id"]], :visibility => "public"}, {:Authorization => "Bearer #{creds["botsinspace"]["access_token"]}"}
+      if (!ENV["ONLY_TWEET_HOVERS"] || when_hovering )
+        media_json = RestClient.post "#{creds['botsinspace']["instance"]}/api/v1/media", {:file => File.new(png_fn)}, {:Authorization => "Bearer #{creds["botsinspace"]["access_token"]}"}
+        media =  JSON.parse(media_json.body)
+        status_json = RestClient.post "#{creds['botsinspace']["instance"]}/api/v1/statuses", {:status => tweet_text, :media_ids => [media["id"]], :visibility => "public"}, {:Authorization => "Bearer #{creds["botsinspace"]["access_token"]}"}
+      end
       # $stderr.puts (JSON.parse(status_json.body).inspect)
     else
       puts "but not really tooting"
@@ -257,7 +297,7 @@ aircraft.each do |nnum, icao|
         ]
       }
       puts "posting to slack"
-      resp = RestClient.post(creds['slack']['webhook'], JSON.dump(slack_payload), headers: {"Content-Type": "application/json"})
+      resp = RestClient.post(creds['slack']['webhook'], JSON.dump(slack_payload), headers: {"Content-Type": "application/json"}) if (!ENV["ONLY_TWEET_HOVERS"] || when_hovering )
     end
     puts "done at #{Time.now}"
     puts "\n"
