@@ -142,9 +142,9 @@ aircraft.each do |nnum, icao|
 
     metadata_fn = svg_fn.gsub(".svg", ".metadata.json")
     metadata = JSON.parse(open(metadata_fn, 'r'){|f| f.read })
-    neighborhood_names = metadata["nabes"] 
-    hover_neighborhood_names = metadata["hover_nabes"]
-    
+    neighborhood_names = metadata["nabes"].map{|name| name.gsub("Brg", "Bridge") }
+    hover_neighborhood_names = metadata["hover_nabes"].map{|name| name.gsub("Brg", "Bridge") }
+
     # not currently used, just trying not to forget about 'em.
     start_recd_time = metadata["start_recd_time"]
     end_recd_time = metadata["end_recd_time"]
@@ -190,10 +190,17 @@ aircraft.each do |nnum, icao|
     if when_hovering
       arbitrary_marker = latest_shingle_centerpoint ? "--arbitrary-marker=#{latest_shingle_centerpoint['lon']},#{latest_shingle_centerpoint['lat']}" : ''
       svg_fn = `MAXTIMEDIFF=#{10} /usr/local/bin/node #{File.dirname(__FILE__)}/../dump1090-mapper/mapify.js --n-number #{nnum} #{arbitrary_marker} #{icao}`
+      svg_fn.strip!
+      puts "svg: #{svg_fn.inspect}"    
+      puts $?
+      puts $?.exitstatus
       png_datetime = Time.now.strftime("%Y-%m-%d_%H_%M_%S")
       png_fn = svg_fn[0...-4] + png_datetime +  ".png"
-      new_metadata_fn = metadata_fn.gsub(".metadata.json", "-" + png_datetime + ".metadata.json")
-      File.rename(metadata_fn, new_metadata_fn)
+      hover_metadata_fn = svg_fn.gsub(".svg", ".metadata.json")
+      hover_metadata = JSON.parse(open(hover_metadata_fn, 'r'){|f| f.read })
+      hover_neighborhood_names = hover_metadata["hover_nabes"].map{|name| name.gsub("Brg", "Bridge") }
+      new_hover_metadata_fn = hover_metadata_fn.gsub(".metadata.json", "-" + png_datetime + ".metadata.json")
+      File.rename(hover_metadata_fn, new_hover_metadata_fn)
 
       png_start_time = Time.now
       screenshot_svg_to_png(svg_fn, png_fn)
@@ -211,7 +218,7 @@ aircraft.each do |nnum, icao|
     bridge_names = neighborhood_names.select{|name| name.match(/Bridge$/)}
     if ENV["ONLY_TWEET_HOVERS"]
       return if !nnum.include?("PD") # don't tweet non-police aircraft
-      tweet_text = (neighborhood_names.nil? ? new_sayings.select{|txt| txt.include?("NEIGHBORHOODS~") } : (bridge_names.empty? ? new_sayings.reject{|txt| txt.include?("~BRIDGENAME~")} : new_sayings )).sample.dup
+      tweet_text = (hover_neighborhood_names.nil? ? new_sayings.select{|txt| txt.include?("NEIGHBORHOODS~") } : (bridge_names.empty? ? new_sayings.reject{|txt| txt.include?("~BRIDGENAME~")} : new_sayings )).sample.dup
       while hover_neighborhood_names.size > 0
         possible_tweet_text = tweet_text.gsub("~HOVERNEIGHBORHOODS~", andify(hover_neighborhood_names) )
         if possible_tweet_text.size < 280
