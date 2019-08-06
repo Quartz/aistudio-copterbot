@@ -56,8 +56,8 @@ messages_with_neighborhoods = [
 ]
 
 new_sayings = [
-  "Sorry you got woken up… NYPD helicopter ~NNUM~ was hovering over ~HOVERNEIGHBORHOODS~ from about ~TIME1~ to ~TIME2~. Do you have any idea why? Reply and let us know.",
-  "You aren’t imagining it, that helicopter has been there a while. We’ve detected that NYPD helicopter ~NNUM~ was hovering over ~HOVERNEIGHBORHOODS~ for ~DURATION~ just now. We want to find out why. Do you know? Tell us!",
+  "Sorry you got woken up… NYPD helicopter ~NNUM~ has been hovering over ~HOVERNEIGHBORHOODS~ from about ~TIME1~ to ~TIME2~. Do you have any idea why? Reply and let us know.",
+  "You aren’t imagining it, that helicopter has been there a while. We’ve detected that NYPD helicopter ~NNUM~ has been hovering over ~HOVERNEIGHBORHOODS~ for ~DURATION~. We want to find out why. Do you know? Tell us!",
   "Welp, ~HOVERNEIGHBORHOODS~, that helicopter has been hovering there for a while, no? Hope you weren’t trying to, you know, sleep or, like, talk or anything. 🙄 Got a clue what’s happening nearby that NYPD is responding to? Tell us!",
   "CHOP CHOP chop chop … [silence] … chop chop chop … [silence] … chop CHOP CHOP.\n\n That police helicopter’s been hovering over ~HOVERNEIGHBORHOODS~ since ~TIME1~… Wonder what it’s up to? Stay tuned. If you know, say so below (plz!).",
   "CHOP CHOP chop chop … [silence] … chop chop chop … [silence] … chop CHOP CHOP.\n\n That police helicopter’s been hovering overhead since ~TIME1~… Wonder what it’s up to? Stay tuned. If you know, say so below (plz!).",
@@ -148,8 +148,6 @@ aircraft.each do |nnum, icao|
     # not currently used, just trying not to forget about 'em.
     start_recd_time = metadata["start_recd_time"]
     end_recd_time = metadata["end_recd_time"]
-    start_ac_time = metadata["start_ac_time"]
-    end_ac_time = metadata["end_ac_time"]
     points_cnt = metadata["points_cnt"]
 
     next if points_cnt < MIN_POINTS
@@ -174,6 +172,7 @@ aircraft.each do |nnum, icao|
     res = figure_out_if_hovering(icao, nnum, start_recd_time, end_recd_time)
     puts "when is it hovering? " + res.inspect
     hovering_shingles = res.select{|shingle_start, shingle_end, was_hovering, centerpoint| was_hovering}.map{|shingle_start, shingle_end, was_hovering, centerpoint| [shingle_start, shingle_end]}
+    currently_hovering = res[-2..-1] && res[-1 * [2, res.size].max..-1].any?{|shingle_start, shingle_end, was_hovering, centerpoint| was_hovering}
 
     latest_shingle_centerpoint = res.select{|shingle_start, shingle_end, was_hovering, centerpoint| was_hovering}.sort_by{|shingle_start, shingle_end, was_hovering, centerpoint| shingle_end }.map{|shingle_start, shingle_end, was_hovering, centerpoint| centerpoint }[-1]
     shingle_centerpoints = Hash[*res.select{|shingle_start, shingle_end, was_hovering, centerpoint| was_hovering}.map{|shingle_start, shingle_end, was_hovering, centerpoint| [[shingle_start, shingle_end], centerpoint] }.flatten(1)]
@@ -218,7 +217,14 @@ aircraft.each do |nnum, icao|
     bridge_names = neighborhood_names.select{|name| name.match(/Bridge$/)}
     if ENV["ONLY_TWEET_HOVERS"]
       return if !nnum.include?("PD") # don't tweet non-police aircraft
-      tweet_text = (hover_neighborhood_names.nil? ? new_sayings.select{|txt| txt.include?("NEIGHBORHOODS~") } : (bridge_names.empty? ? new_sayings.reject{|txt| txt.include?("~BRIDGENAME~")} : new_sayings )).sample.dup
+      tweet_text = (!(hover_neighborhood_names.nil? || hover_neighborhood_names.empty?) ? new_sayings.select{|txt| txt.include?("NEIGHBORHOODS~") } : (bridge_names.empty? ? new_sayings.reject{|txt| txt.include?("~BRIDGENAME~")} : new_sayings )).sample.dup
+
+      if !currently_hovering
+        tweet_text.gsub!("has been", "was")
+        tweet_text.gsub!("’s been", " was")
+        tweet_text.gsub!("There’s", "There was")
+      end
+
       while hover_neighborhood_names.size > 0
         possible_tweet_text = tweet_text.gsub("~HOVERNEIGHBORHOODS~", andify(hover_neighborhood_names) )
         if possible_tweet_text.size < 280
