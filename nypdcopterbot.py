@@ -33,7 +33,7 @@ env = lambda x: environ.get(x, None)
 
 prod_mapping_interval = 10  # min, should be 15
 dev_mapping_interval = 15
-MAPPING_INTERVAL = (env('MAPINTVL') or dev_mapping_interval) if env("NEVERTWEET") or env("NEVERTOOT") else prod_mapping_interval
+MAPPING_INTERVAL = (env('MAPINTVL') or dev_mapping_interval) if env("NEVERTWEET") or env("NEVERTOOT") else (env('MAPINTVL') or prod_mapping_interval)
 delay = 0 # min, default 5 min
 
 MIN_POINTS = 3 # number of points to require before tweeting a map. probably actually ought to be more!
@@ -83,7 +83,7 @@ makedirs(PNG_PATH, exist_ok=True)
 message_templates = [
   "Sorry you got woken up… NYPD helicopter ~NNUM~ has been hovering over ~HOVERNEIGHBORHOODS~ from about ~TIME1~ to ~TIME2~. Do you have any idea why? Reply and let us know.",
   "You aren’t imagining it, that helicopter has been there a while. We’ve detected that NYPD helicopter ~NNUM~ has been hovering over ~HOVERNEIGHBORHOODS~ for ~DURATION~. We want to find out why. Do you know? Tell us!",
-  "Welp, ~HOVERNEIGHBORHOODS~, that helicopter has been hovering there for a while, no? Hope you weren’t trying to, you know, sleep or, like, talk or anything. 🙄 Got a clue what’s happening nearby that NYPD is responding to? Tell us!",
+  "Welp, ~HOVERNEIGHBORHOODS~, that helicopter has been hovering there for a while, no? Got a clue what’s happening nearby that NYPD is responding to? Tell us!",
   "CHOP CHOP chop chop … [silence] … chop chop chop … [silence] … chop CHOP CHOP.\n\n That police helicopter’s been hovering over ~HOVERNEIGHBORHOODS~ since ~TIME1~… Wonder what it’s up to? Stay tuned. If you know, say so below (plz!).",
   "CHOP CHOP chop chop … [silence] … chop chop chop … [silence] … chop CHOP CHOP.\n\n That police helicopter’s been hovering overhead since ~TIME1~… Wonder what it’s up to? Stay tuned. If you know, say so below (plz!).",
   "There’s an NYPD helicopter hovering over ~BRIDGENAME~. Probably traffic, but maybe not. Do you know what’s happening?",
@@ -154,12 +154,10 @@ def construct_tweet_text(**kwargs):
 
 def tweet(tweet_text, debug_text, png_fn, latest_shingle_centerpoint=None):
     if not env("NEVERTWEET"):
-        twitterclient.update_with_media()
-        media_id = twitter.media_upload(png_fn)
         if latest_shingle_centerpoint:
-            twitterclient.update_with_media( tweet_text, media_ids=[media_id], lat=latest_shingle_centerpoint['lat'], long=latest_shingle_centerpoint['lon'])
+            twitterclient.update_with_media(png_fn, tweet_text, lat=latest_shingle_centerpoint['lat'], long=latest_shingle_centerpoint['lon'])
         else:
-            twitterclient.update_with_media( tweet_text, media_ids=[media_id])
+            twitterclient.update_with_media(png_fn, tweet_text)
         print("actually twote (from python)")
     else:
         print("not really tweeting")
@@ -169,7 +167,7 @@ def toot(tweet_text, debug_text, png_fn):
             files={"file": open(png_fn, 'rb')}, 
             headers={"Authorization": "Bearer {}".format(creds["botsinspace"]["access_token"])}
             )
-        media =  JSON.parse(media_json.body)
+        media =  media_json.json()
         status_json = requests.post("{}/api/v1/statuses".format(creds['botsinspace']["instance"]), 
             data={"status": tweet_text, "media_ids": [media["id"]], "visibility": "public"}, 
             headers={"Authorization": "Bearer {}".format(creds["botsinspace"]["access_token"])})
@@ -230,68 +228,6 @@ def notify(tweet_ingredients, if_it_hovered):
         print("\n")
         print("\n")
 
-
-def figure_out_tweet_ingredients(flightpath):
-    pass
-
-
-def do_it_from_json():
-    flightpath = Flightpath.from_json('../dump1090mapper/fixtures/N920PD-2019-07-18T18_10_36-2019-07-18T18_35_20.flightpath.json')
-    try:
-        shingles = list(flightpath.as_shingles())
-
-        for shingle in shingles:
-            shingle.to_map()
-            is_hovering = map_classifier.classify_map(shingle.get_map_fn())
-            shingle.is_hovering = is_hovering
-
-    except HelicopterShinglingError as e:
-        print("HelicopterShinglingError")
-        print(e)
-        shingles = []
-
-    was_hovering = any(shingle.is_hovering for shingle in shingles)
-    currently_hovering = any(shingle.is_hovering for shingle in shingles[-2:])
-
-
-    print("was hovering!" if was_hovering else "wasn't hovering")
-
-    map_fn, _ = flightpath.to_map()
-    flight_duration_mins = (flightpath.end_time - flightpath.start_time).total_seconds() // 60
-    duration_str =  f"{flight_duration_mins // 60} hours and {flight_duration_mins % 60} mins" if flight_duration_mins > 120 else (f"{flight_duration_mins // 60} hour and {flight_duration_mins % 60} mins" if flight_duration_mins > 60 else f"{flight_duration_mins} mins")
-
-    # coming up with the text to tweet/post
-    print(f"CONVERT those times to local: {flightpath.start_time} {flightpath.end_time}")
-
-    hover_neighborhood_names = [shingle.neighborhoods_underneath() for shingle in shingles if shingle.is_hovering]
-    bridge_names = [name for name in hover_neighborhood_names if "Bridge" in name and name.index("Bridge") == len(name) - 6]
-    neighborhood_names = [shingle.neighborhoods_underneath() for shingle in shingles]
-    print(neighborhood_names)
-    # TODO add these variables
-    # still hovering or not?
-    # neighborhoods or not?
-    # bridge or not?
-    tweet_ingredients = {
-        "nnum": flightpath.nnum,
-        "hover_neighborhood_names": andify(neighborhood_names),
-        "bridge_names": andify(bridge_names),
-        "currently_hovering": currently_hovering,
-        "latest_time_seen": flightpath.end_time,
-        "earliest_time_seen": flightpath.start_time,
-        "flight_duration": duration_str,
-        "png_fn": map_fn,
-        "points_cnt": flightpath.points_cnt,
-        "latest_shingle_centerpoint": None,
-
-    }
-    print(tweet_ingredients)
-    notify(tweet_ingredients, True)
-
-
-
-    exit(0)
-
-
 if __name__ == "__main__":
     for nnum, icao_hex in aircraft.items():
       try:
@@ -336,11 +272,11 @@ if __name__ == "__main__":
 
             print(f"CONVERT those times to local: {flightpath.start_time} {flightpath.end_time}")
 
-            hover_neighborhood_names = [shingle.neighborhoods_underneath() for shingle in shingles if shingle.is_hovering]
+            hover_neighborhood_names = [item for sl in [shingle.neighborhoods_underneath() for shingle in shingles if shingle.is_hovering] for item in sl]
             tweet_ingredients = {
                 "nnum": flightpath.nnum,
-                "hover_neighborhood_names": andify(hover_neighborhood_names),
-                "bridge_names": andify([name for name in hover_neighborhood_names if "Bridge" in name and name.index("Bridge") == len(name) - 6]),
+                "hover_neighborhood_names": hover_neighborhood_names,
+                "bridge_names": [name for name in hover_neighborhood_names if "Bridge" in name and name.index("Bridge") == len(name) - 6],
                 "currently_hovering": currently_hovering,
                 "latest_time_seen": flightpath.end_time,
                 "earliest_time_seen": flightpath.start_time,
@@ -351,41 +287,6 @@ if __name__ == "__main__":
 
             }
             notify(tweet_ingredients, was_hovering)
-        elif True: # testing; TODO remove.
-            try:
-                map_fn, _ = flightpath.to_map(background_color='#ADD8E6')
-            except HelicopterMappingError:
-                continue
-            flight_duration_mins = (flightpath.end_time - flightpath.start_time).total_seconds() // 60
-            duration_str =  f"{flight_duration_mins // 60} hours and {flight_duration_mins % 60} mins" if flight_duration_mins > 120 else (f"{flight_duration_mins // 60} hour and {flight_duration_mins % 60} mins" if flight_duration_mins > 60 else f"{flight_duration_mins} mins")
-
-            # coming up with the text to tweet/post
-            print(f"CONVERT those times to local: {flightpath.start_time} {flightpath.end_time}")
-
-            hover_neighborhood_names = [shingle.neighborhoods_underneath() for shingle in shingles if shingle.is_hovering]
-            bridge_names = [name for name in hover_neighborhood_names if "Bridge" in name and name.index("Bridge") == len(name) - 6]
-
-
-            # TODO add these variables
-            # still hovering or not?
-            # neighborhoods or not?
-            # bridge or not?
-            tweet_ingredients = {
-                "nnum": flightpath.nnum,
-                "hover_neighborhood_names": andify(hover_neighborhood_names),
-                "bridge_names": andify(bridge_names),
-                "currently_hovering": currently_hovering,
-                "latest_time_seen": flightpath.end_time,
-                "earliest_time_seen": flightpath.start_time,
-                "flight_duration": duration_str,
-                "png_fn": map_fn,
-                "points_cnt": flightpath.points_cnt,
-                "latest_shingle_centerpoint": None,
-
-            }
-            print(tweet_ingredients)
-            notify(tweet_ingredients, True)
-
       except Exception as e:
         print(e)
         traceback.print_exc()
