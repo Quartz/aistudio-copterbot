@@ -42,18 +42,7 @@ BUCKET = 'qz-aistudio-jbfm-scratch'
 
 map_classifier = MapClassifier()
 
-
-
-connection = pymysql.connect(host=env('MYSQLHOST'),
-                             user=env('MYSQLUSER') or env('MYSQLUSERNAME'),
-                             port=env('MYSQLPORT'),
-                             password=env('MYSQLPASSWORD'),
-                             db=env('MYSQLDATABASE') or "dump1090",
-                             charset='utf8mb4',
-                             cursorclass=pymysql.cursors.DictCursor)
-
-
-def check_if_helicopter_has_been_seen_recently(nnum, icao):
+def check_if_helicopter_has_been_seen_recently(connection, nnum, icao):
     with connection.cursor() as cursor:
         # Create a new record
         sql = f"""
@@ -212,6 +201,7 @@ def upload_image_to_s3(png_fn):
     return png_s3_key
 
 def notify(tweet_ingredients, if_it_hovered):
+    print("tweet ingredients", tweet_ingredients)
     if not env("ONLY_TWEET_HOVERS") or if_it_hovered:
         tweet_text, debug_text, image_caption = construct_tweet_text(**tweet_ingredients)
         print(f"trying to tweet \"{tweet_text}\" in {delay} min")
@@ -229,6 +219,15 @@ def notify(tweet_ingredients, if_it_hovered):
         print("\n")
 
 if __name__ == "__main__":
+    connection = pymysql.connect(host=env('MYSQLHOST'),
+                                 user=env('MYSQLUSER') or env('MYSQLUSERNAME'),
+                                 port=env('MYSQLPORT'),
+                                 password=env('MYSQLPASSWORD'),
+                                 db=env('MYSQLDATABASE') or "dump1090",
+                                 charset='utf8mb4',
+                                 cursorclass=pymysql.cursors.DictCursor)
+
+
     for nnum, icao_hex in aircraft.items():
       try:
         # parsed_time is the current time on the rpi, so regardless of the garbage given by the airplane, that should work
@@ -236,7 +235,7 @@ if __name__ == "__main__":
         # but without it, n725dt is never tweeted
         # TODO: should I modify dump1090-stream-parser so that one of the timing columns is current time on the DB? (e.g. with MYSQL @@current_time or whatever)
 
-        if not check_if_helicopter_has_been_seen_recently(nnum, icao_hex):
+        if not check_if_helicopter_has_been_seen_recently(connection, nnum, icao_hex):
             continue
 
         crs = 2263 # NY State Plane
@@ -250,8 +249,7 @@ if __name__ == "__main__":
 
             for shingle in shingles:
                 shingle.to_map(include_labels=False)
-                is_hovering = map_classifier.classify_map(shingle.get_map_fn())
-                shingle.is_hovering = is_hovering
+                shingle.is_hovering = map_classifier.classify_map(shingle.get_map_fn())
 
         except HelicopterShinglingError:
             print("HelicopterShinglingError")
@@ -272,7 +270,7 @@ if __name__ == "__main__":
 
             print(f"CONVERT those times to local: {flightpath.start_time} {flightpath.end_time}")
 
-            hover_neighborhood_names = [item for sl in [shingle.neighborhoods_underneath() for shingle in shingles if shingle.is_hovering] for item in sl]
+            hover_neighborhood_names = list(set([item.replace("Brg", "Bridge") for sl in [shingle.neighborhoods_underneath() for shingle in shingles if shingle.is_hovering] for item in sl]))
             tweet_ingredients = {
                 "nnum": flightpath.nnum,
                 "hover_neighborhood_names": hover_neighborhood_names,
