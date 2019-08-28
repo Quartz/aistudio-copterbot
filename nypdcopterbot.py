@@ -14,8 +14,8 @@ path.append('../dump1090mapper')
 from dump1090mapper.flightpath import Flightpath, NeighborhoodsCounter, COPTERS, HelicopterShinglingError, HelicopterMappingError
 import boto3
 import tweepy
+import pytz
 
-# TODO.
 
 aircraft = {
   "N917PD": "ACB1F5",
@@ -95,6 +95,9 @@ def construct_tweet_text(**kwargs):
         return 
 
     tweet_candidates = list(message_templates)
+    current_hour = datetime.datetime.utcnow().astimezone(pytz.timezone("America/New_York")).hour
+    if current_hour >= 8 and current_hour < 22:
+        tweet_candidates = [text for text in tweet_candidates if "woken up" not in text]
     if len(kwargs["hover_neighborhood_names"]) == 0:
         tweet_candidates = [text for text in tweet_candidates if "NEIGHBORHOODS~" not in text]
     if len(kwargs["bridge_names"]) == 0:
