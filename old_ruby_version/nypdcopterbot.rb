@@ -58,7 +58,7 @@ messages_with_neighborhoods = [
 new_sayings = [
   "Sorry you got woken up… NYPD helicopter ~NNUM~ has been hovering over ~HOVERNEIGHBORHOODS~ from about ~TIME1~ to ~TIME2~. Do you have any idea why? Reply and let us know.",
   "You aren’t imagining it, that helicopter has been there a while. We’ve detected that NYPD helicopter ~NNUM~ has been hovering over ~HOVERNEIGHBORHOODS~ for ~DURATION~. We want to find out why. Do you know? Tell us!",
-  "Welp, ~HOVERNEIGHBORHOODS~, that helicopter has been hovering there for a while, no? Hope you weren’t trying to, you know, sleep or, like, talk or anything. 🙄 Got a clue what’s happening nearby that NYPD is responding to? Tell us!",
+  "Welp, ~HOVERNEIGHBORHOODS~, that helicopter has been hovering there for a while, no? Got a clue what’s happening nearby that NYPD is responding to? Tell us!",
   "CHOP CHOP chop chop … [silence] … chop chop chop … [silence] … chop CHOP CHOP.\n\n That police helicopter’s been hovering over ~HOVERNEIGHBORHOODS~ since ~TIME1~… Wonder what it’s up to? Stay tuned. If you know, say so below (plz!).",
   "CHOP CHOP chop chop … [silence] … chop chop chop … [silence] … chop CHOP CHOP.\n\n That police helicopter’s been hovering overhead since ~TIME1~… Wonder what it’s up to? Stay tuned. If you know, say so below (plz!).",
   "There’s an NYPD helicopter hovering over ~BRIDGENAME~. Probably traffic, but maybe not. Do you know what’s happening?",

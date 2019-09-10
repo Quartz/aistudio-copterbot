@@ -2,8 +2,10 @@ from nypdcopterbot import *
 
 
 crs = 2263 # NY State Plane
-flightpath = Flightpath.from_json('N918PD-2019-08-27T12_57_48-2019-08-27T13_01_21.flightpath.json')
-
+flightpath = Flightpath.from_json('N918PD-2019-09-04T09_58_52-2019-09-04T10_09_47.flightpath.json')
+ # Good Crown Heights hover : N918PD-2019-08-28T21_09_20-2019-08-28T21_58_23.flightpath.json 3.2877072964001477
+ # random flying: N919PD-2019-08-29T16_32_57-2019-08-29T17_01_23.flightpath.json             7.098539603726429
+ # Bkln Bridge: N918PD-2019-08-27T12_57_48-2019-08-27T13_01_21.flightpath.json              11.910507380708784
 fp_json = flightpath.to_json()
 
 with open(flightpath.json_fn(), 'w') as f:
@@ -13,8 +15,9 @@ try:
     shingles = list(flightpath.as_shingles())
 
     for shingle in shingles:
-        shingle.to_map(include_labels=False)
+        map_fn, _ = shingle.to_map()
         shingle.is_hovering = map_classifier.classify_map(shingle.get_map_fn())
+        # TODO: delete shingle image
 
 except HelicopterShinglingError:
     print("HelicopterShinglingError")
@@ -29,7 +32,7 @@ print("was hovering!" if was_hovering else "wasn't hovering")
 if was_hovering:
     centerpoint_of_last_hovering_shingle = next(shingle for shingle in reversed(shingles) if shingle.is_hovering).centerpoint()
 
-    map_fn, _ = flightpath.to_map(arbitrary_marker=(centerpoint_of_last_hovering_shingle["lat"],centerpoint_of_last_hovering_shingle["lon"]), background_color='#ADD8E6')
+    map_fn, plt = flightpath.to_map(arbitrary_marker=(centerpoint_of_last_hovering_shingle["lat"],centerpoint_of_last_hovering_shingle["lon"]), background_color='#ADD8E6')
     flight_duration_mins = int((flightpath.end_time - flightpath.start_time).total_seconds() // 60)
     duration_str =  f"{flight_duration_mins // 60} hours and {flight_duration_mins % 60} mins" if flight_duration_mins > 120 else (f"{flight_duration_mins // 60} hour and {flight_duration_mins % 60} mins" if flight_duration_mins > 60 else f"{flight_duration_mins} mins")
 

@@ -8,9 +8,10 @@ __pycache__/
 *.metadata.json
 *models/
 creds.yml
-hand_coded_training_data/
-hover_train_svg/
+training_data_generation/hand_coded_training_data/
+training_data_generation/hover_train_svg/
 training_data.csv
 shingles.csv
 .ipynb_checkpoints/
 generating_quantiles.txt
+*.flightpath.json

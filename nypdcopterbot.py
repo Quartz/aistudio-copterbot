@@ -95,7 +95,7 @@ def construct_tweet_text(**kwargs):
         return 
 
     tweet_candidates = list(message_templates)
-    current_hour = datetime.datetime.utcnow().astimezone(pytz.timezone("America/New_York")).hour
+    current_hour = datetime.utcnow().astimezone(pytz.timezone("America/New_York")).hour
     if current_hour >= 8 and current_hour < 22:
         tweet_candidates = [text for text in tweet_candidates if "woken up" not in text]
     if len(kwargs["hover_neighborhood_names"]) == 0:
@@ -136,7 +136,7 @@ def construct_tweet_text(**kwargs):
     tweet_text = tweet_text.replace("~TIME1~", kwargs["earliest_time_seen"].strftime("%-I:%M %p") )
     tweet_text = tweet_text.replace("~TIME2~", kwargs["latest_time_seen"].strftime("%-I:%M %p") )
     duration_min = (kwargs["latest_time_seen"] - kwargs["earliest_time_seen"]).total_seconds() // 60
-    tweet_text = tweet_text.replace("~DURATION~", kwargs["flight_duration"] + " min" )
+    tweet_text = tweet_text.replace("~DURATION~", kwargs["flight_duration"] )
     tweet_text = tweet_text.replace("~BRIDGENAME~", andify(kwargs["bridge_names"]))
 
     debug_text = "{} points; {} to {}".format(kwargs["points_cnt"], kwargs["earliest_time_seen"].strftime("%-I:%M %p"), kwargs["latest_time_seen"].strftime("%-I:%M %p"))
@@ -251,7 +251,7 @@ if __name__ == "__main__":
             shingles = list(flightpath.as_shingles())
 
             for shingle in shingles:
-                shingle.to_map(include_labels=False)
+                shingle.to_map()
                 shingle.is_hovering = map_classifier.classify_map(shingle.get_map_fn())
 
         except HelicopterShinglingError:

@@ -20,6 +20,7 @@ class MapClassifier:
         # print (pred_idx)
         # print (outputs)
         print(outputs[0], file=sys.stderr)
+        print(outputs[0])
         return pred_class.obj == "hover"
 
 if __name__ == "__main__":
