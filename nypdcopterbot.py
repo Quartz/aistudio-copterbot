@@ -27,6 +27,7 @@ aircraft = {
   "N414PD": "A4E445",
   "N23FH" : "A206AC",
   "N509PD": "A65CA8",
+  "N592PD": "A7A61E"
 }
 
 env = lambda x: environ.get(x, None)
@@ -70,12 +71,12 @@ makedirs(PNG_PATH, exist_ok=True)
 
 
 message_templates = [
-  "Sorry you got woken up… NYPD helicopter ~NNUM~ has been hovering over ~HOVERNEIGHBORHOODS~ from about ~TIME1~ to ~TIME2~. Do you have any idea why? Reply and let us know.",
-  "You aren’t imagining it, that helicopter has been there a while. We’ve detected that NYPD helicopter ~NNUM~ has been hovering over ~HOVERNEIGHBORHOODS~ for ~DURATION~. We want to find out why. Do you know? Tell us!",
-  "Welp, ~HOVERNEIGHBORHOODS~, that helicopter has been hovering there for a while, no? Got a clue what’s happening nearby that NYPD is responding to? Tell us!",
+  "~PDNAME~ helicopter ~NNUM~ has been hovering over ~HOVERNEIGHBORHOODS~ from about ~TIME1~ to ~TIME2~. Do you have any idea why? Reply and let us know.",
+  "You aren’t imagining it, that helicopter has been there a while. We’ve detected that ~PDNAME~ helicopter ~NNUM~ has been hovering over ~HOVERNEIGHBORHOODS~ for ~DURATION~. We want to find out why. Do you know? Tell us!",
+  "Welp, ~HOVERNEIGHBORHOODS~, that helicopter has been hovering there for a while, no? Got a clue what’s happening nearby that ~PDNAME~ is responding to? Tell us!",
   "CHOP CHOP chop chop … [silence] … chop chop chop … [silence] … chop CHOP CHOP.\n\n That police helicopter’s been hovering over ~HOVERNEIGHBORHOODS~ since ~TIME1~… Wonder what it’s up to? Stay tuned. If you know, say so below (plz!).",
   "CHOP CHOP chop chop … [silence] … chop chop chop … [silence] … chop CHOP CHOP.\n\n That police helicopter’s been hovering overhead since ~TIME1~… Wonder what it’s up to? Stay tuned. If you know, say so below (plz!).",
-  "There’s an NYPD helicopter hovering over ~BRIDGENAME~. Probably traffic, but maybe not. Do you know what’s happening?",
+  "There’s an ~PDNAME~ helicopter hovering over ~BRIDGENAME~. Probably traffic, but maybe not. Do you know what’s happening?",
 ]
 
 
@@ -96,8 +97,8 @@ def construct_tweet_text(**kwargs):
 
     tweet_candidates = list(message_templates)
     current_hour = datetime.utcnow().astimezone(pytz.timezone("America/New_York")).hour
-    if current_hour >= 8 and current_hour < 22:
-        tweet_candidates = [text for text in tweet_candidates if "woken up" not in text]
+    # if current_hour >= 8 and current_hour < 22:
+    #     tweet_candidates = [text for text in tweet_candidates if "woken up" not in text]
     if len(kwargs["hover_neighborhood_names"]) == 0:
         tweet_candidates = [text for text in tweet_candidates if "NEIGHBORHOODS~" not in text]
     if len(kwargs["bridge_names"]) == 0:
@@ -132,6 +133,7 @@ def construct_tweet_text(**kwargs):
     #             else:
     #                 neighborhood_names.pop()
 
+    tweet_text = tweet_text.replace("~PDNAME~", kwargs["pdname"])
     tweet_text = tweet_text.replace("~NNUM~", kwargs["nnum"])
     tweet_text = tweet_text.replace("~TIME1~", kwargs["earliest_time_seen"].strftime("%-I:%M %p") )
     tweet_text = tweet_text.replace("~TIME2~", kwargs["latest_time_seen"].strftime("%-I:%M %p") )
@@ -285,6 +287,7 @@ if __name__ == "__main__":
                 "png_fn": map_fn,
                 "points_cnt": flightpath.points_cnt,
                 "latest_shingle_centerpoint": centerpoint_of_last_hovering_shingle,
+                "pdname": "NYPD" if flightpath.nnum not in ["N509PD", "N592PD"] else "Westchester PD"
 
             }
             notify(tweet_ingredients, was_hovering)
